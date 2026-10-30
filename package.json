@@ -1,0 +1,45 @@
+{
+  "name": "mensa-lunch-rush",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ZAHLN frontend take-home: student app, till and Studierendenwerk dashboard in one TypeScript monorepo.",
+  "packageManager": "pnpm@10.34.9",
+  "engines": {
+    "node": ">=20.19.4"
+  },
+  "scripts": {
+    "env:init": "node scripts/env-init.mjs",
+    "student": "pnpm --filter @mensa/student start",
+    "student:android": "pnpm --filter @mensa/student android",
+    "student:ios": "pnpm --filter @mensa/student ios",
+    "till": "pnpm --filter @mensa/till start",
+    "till:android": "pnpm --filter @mensa/till android",
+    "till:ios": "pnpm --filter @mensa/till ios",
+    "dashboard": "pnpm --filter @mensa/dashboard dev",
+    "dashboard:build": "pnpm --filter @mensa/dashboard build",
+    "dashboard:preview": "pnpm --filter @mensa/dashboard preview",
+    "api:generate": "pnpm --filter @mensa/api generate",
+    "api:smoke": "pnpm --filter @mensa/api smoke",
+    "api:spec-diff": "pnpm --filter @mensa/api spec-diff",
+    "bundle:native": "pnpm --filter @mensa/student --filter @mensa/till bundle",
+    "apk:student": "node scripts/build-android-apk.mjs student",
+    "apk:till": "node scripts/build-android-apk.mjs till",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "pnpm -r typecheck",
+    "test": "tsx --test \"packages/*/src/**/*.test.ts\"",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm dashboard:build"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "@types/node": "24.19.2",
+    "eslint": "9.39.5",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "globals": "17.13.0",
+    "prettier": "3.9.10",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.72.1"
+  }
+}

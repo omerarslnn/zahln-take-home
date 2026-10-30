@@ -1,0 +1,21 @@
+{
+  "name": "@mensa/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "generate": "openapi-typescript openapi/openapi.json --output src/generated/openapi.ts",
+    "smoke": "tsx scripts/smoke.ts",
+    "spec-diff": "tsx scripts/spec-diff.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "openapi-typescript": "7.13.0",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3"
+  }
+}

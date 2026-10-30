@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "Mensa Till",
+    "slug": "mensa-till",
+    "scheme": "mensa-till",
+    "version": "0.1.0",
+    "platforms": ["ios", "android"],
+    "orientation": "default",
+    "userInterfaceStyle": "light",
+    "icon": "./assets/icon.png",
+    "newArchEnabled": true,
+    "ios": {
+      "bundleIdentifier": "dev.omerarslan.mensa.till",
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "dev.omerarslan.mensa.till",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0F766E"
+      }
+    },
+    "experiments": {
+      "autolinkingModuleResolution": true
+    }
+  }
+}

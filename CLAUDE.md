@@ -1,0 +1,99 @@
+# CLAUDE.md
+
+Guidance for AI coding sessions in this repository. Keep it short and true; update it when facts change.
+
+## The task
+
+ZAHLN frontend take-home "The Mensa Lunch Rush": one payment flow across three surfaces in one
+TypeScript monorepo, against a deliberately unreliable mock API (`https://dev.zahln.de`).
+
+- `apps/student` (Expo, iOS + Android): pick a seeded user (student, staff or guest), scan a till QR,
+  see mensa, items and amount, confirm with biometrics or PIN, see the result; payment history
+  (including payments still being checked) with a detail view.
+- `apps/till` (Expo, tablet): ring up an order from the menu and show its QR, show the payment result,
+  refund in full or in part with a clear error when refunding is not allowed.
+- `apps/dashboard` (React + Vite, web): daily totals per mensa and per till, payments that need
+  attention, search with full history per payment, CSV export.
+
+Required: an installable Android build, the dashboard on a public URL, German and English on every
+screen that is built, and a pay flow that works with a screen reader. Evaluation order: correctness
+(money never moves twice, no screen shows an untrue result), ownership, product quality, shippability,
+code quality.
+
+Sources: the task PDF, Gaurav's API email and the job posting are local-only in `brief/` (git-ignored).
+The API contract used by the code is `packages/api/openapi/openapi.json`, a byte-identical copy of the
+supplied file. Never modify `brief/`. Record live-spec differences in `docs/api-notes.md`.
+
+## Current stage
+
+Stage 1 (foundation) is done; see `docs/progress.md`. **No order, payment or refund mutation exists in
+the code yet.** The invariants below are design constraints. Do not describe any of them as enforced
+unless code and tests in this repository enforce it.
+
+Not allowed until a later stage explicitly asks for it: payment/order/refund mutations, and any
+automatic offline payment queue or background payment retry.
+
+## Commands
+
+```sh
+pnpm install            # pnpm 10.34.9 via Corepack (packageManager field)
+pnpm check              # format:check + lint + typecheck + test + dashboard production build
+pnpm student | pnpm till | pnpm dashboard     # Metro 8081 | Metro 8082 | Vite 5173
+pnpm bundle:native      # expo export for iOS and Android (both apps)
+pnpm api:generate       # regenerate packages/api/src/generated from the contract copy
+pnpm api:smoke          # opt-in live check: GET /config, POST /sessions, GET /mensas, CORS preflights
+pnpm api:spec-diff      # opt-in: compare the live OpenAPI document with the committed copy
+pnpm apk:student        # standalone release APK (debug-keystore signed) into artifacts/android/
+```
+
+## Boundaries
+
+- Dependency direction: `apps/* → @mensa/domain → @mensa/api`, and `apps/* → @mensa/shared`.
+  `api` and `shared` do not import each other.
+- `packages/*/src` is platform-neutral: no `react-native`, `expo*`, `nativewind`, `react-dom`,
+  `node:*`, `process`, `window`/`document`. ESLint enforces this. React-only bindings live under
+  `@mensa/shared/react`.
+- Never hand-edit `packages/api/src/generated/`. Change the contract copy deliberately, then
+  `pnpm api:generate`.
+- No `console` in app or package source: tokens, passwords, bodies, amounts tied to users and
+  personal data must never be logged.
+- Native apps read config only as literal `process.env.EXPO_PUBLIC_*`; the dashboard uses `VITE_*`.
+  Both are public (inlined into bundles). No secrets in any client env.
+
+## Payment invariants (constraints for stages 2+)
+
+1. Money is integer cents (EUR). The API resolves prices by the authenticated payer's price group;
+   the client never computes a price. It sends back the amount it showed (`amount_mismatch` guards).
+2. The QR identifies the order (`qrPayload`), not an amount. Its encoding is not specified and not yet
+   observed. Observe it from a real `POST /orders` response and document it; never guess a format.
+3. One persisted idempotency key and one immutable request payload per intent (order, payment,
+   refund). Every retry of that intent reuses both; a new key means a new intent. The server keeps
+   keys for 24 hours per user, so a record older than that must be reconciled by reading, not resent.
+4. A timeout, `502 connection_dropped`, `504 timeout` or missing response after a write is an
+   unknown outcome, not a failure. `pending` is not `confirmed`; only `confirmed` means paid. No
+   optimistic payment success, ever.
+5. A stale read cannot establish that an ambiguous write never happened.
+6. Reconcile orders and payments by `version` across mutation responses, polling, lists and details;
+   never replace a higher version with a lower one (`newerOf` in `@mensa/domain`).
+7. Scope caches and recovery records to candidate ID and user ID.
+8. Re-authentication (`401 session_expired`; tokens last at most 5 minutes) must preserve the pending
+   intent and must never let it continue under a different account.
+9. Server time (`Date` header) governs expiry. Local expiry never resolves an outstanding payment.
+10. Refunds have their own `pending`/`completed`/`failed` lifecycle; pending refunds reserve
+    refundable capacity.
+11. Finance reports use Europe/Berlin days. CSV export follows every page (cursor) of the selected
+    filter, not only the visible page.
+12. Local biometric or PIN confirmation is a device-side gate. The mock API cannot verify it, so it
+    is not server-verifiable payment approval.
+
+## Conventions
+
+- Strict TypeScript everywhere. Expo SDK 54 is pinned on purpose: this Mac has Xcode 26.1.1 and
+  SDK 55+ needs Xcode 26.2+ (see README). React 19.1.0 everywhere, exact pins.
+- Styling: NativeWind 4 + Tailwind 3 with the shared preset `@mensa/shared/tailwind-preset`
+  (tokens in `packages/shared/src/tokens/tokens.json`). Minimum touch target 48.
+- Comments explain decisions, not syntax. JSDoc on public functions. Keep functions short enough to
+  explain in an interview.
+- Tests: `node:test` via `tsx`, colocated `*.test.ts`, only for behaviour worth protecting.
+- Keep `docs/progress.md` and `docs/api-notes.md` in step with actual results; mark checks as passed,
+  failed, blocked or not run.

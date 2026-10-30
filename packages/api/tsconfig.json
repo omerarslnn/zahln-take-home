@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // DOM supplies the fetch/Response/AbortController types that browsers, React Native and Node share.
+    // Node types are only for scripts/ and tests; ESLint forbids Node globals and imports in src/.
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"]
+  },
+  "include": ["src", "scripts"]
+}

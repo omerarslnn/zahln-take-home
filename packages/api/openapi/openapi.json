@@ -1,0 +1,2636 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Zahln Mensa API",
+    "description": "The API behind the Zahln mensa payment flow, for the frontend take-home.\n\nA cashier rings up an order on the till, and the till shows `qrPayload` as a QR code. The QR names the order, not an amount, because the price depends on who pays: students, staff and guests pay different prices for the same dish. A payer scans the QR, reads the order with `GET /orders/{orderId}` (which shows the amount for their price group), and pays it with `POST /orders/{orderId}/payments`. The till polls `GET /orders/{orderId}` until the order is `paid`. The finance team reads payments and daily totals.\n\n## Your candidate ID\n\nSend `X-Candidate-Id` on every request. Your data is separate from everyone else's. The server starts you with seeded data: 3 mensas, 6 tills and 30 days of payments.\n\n## Seeded logins\n\nAll passwords are `test1234`.\n\n| Username | Role | Use |\n|---|---|---|\n| `student`, `staff`, `guest` | payer | Student app. The same order costs a different amount for each. |\n| `cashier-campus-1`, `cashier-campus-2`, `cashier-campus-3` | cashier | Till at Mensa am Campus |\n| `cashier-nord-1`, `cashier-nord-2` | cashier | Till at Mensa Nord |\n| `cashier-bibliothek-1` | cashier | Till at Cafeteria Bibliothek |\n| `finance` | finance | Studierendenwerk dashboard |\n\n## How the server behaves\n\nIt behaves like production on a campus network. Build for this:\n\n- **Slow and failing requests.** Requests can take seconds. They can fail with `503 unavailable` before anything happens.\n- **Lost responses.** A request can be handled and its change saved, and the client still gets `504 timeout`, `502 connection_dropped` or no response at all. The outcome is unknown until you check.\n- **Idempotency.** Every POST that changes money or orders needs an `Idempotency-Key` header. Use one key per intent and reuse it for every retry of that intent. A repeat returns the original result with `Idempotent-Replayed: true`. The same key with a different body is refused with `422 idempotency_mismatch`. Keys are kept for 24 hours, per user.\n- **Out-of-date reads.** A GET can return an earlier state of the same resource. Orders and payments carry `version`, which only grows. Never replace what you show with a lower version.\n- **Sessions end.** An access token lasts 5 minutes and can end sooner. On `401 session_expired`, log in again and retry.\n- **Payments are checked.** A payment starts `pending`. It usually becomes `confirmed` or `declined` within seconds, and sometimes stays `pending` for minutes. Only `confirmed` means the payer has paid. A declined payment frees the order for another try.\n- **Time.** Orders expire 5 minutes after they are made. Use the `Date` response header as the server time, not the device clock.\n- **Errors** are `application/problem+json` with a stable `code` and `retryable`.\n\n## Money\n\nAmounts are integer cents in EUR.\n",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://dev.zahln.de"
+    }
+  ],
+  "paths": {
+    "/sessions": {
+      "post": {
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "Log in",
+        "description": "Log in as a seeded user. The token expires after 5 minutes, and can end earlier: on 401 `session_expired`, log in again and retry.",
+        "operationId": "login_sessions_post",
+        "parameters": [
+          {
+            "name": "X-Candidate-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Your candidate ID. Keeps your data apart from everyone else's.",
+              "title": "X-Candidate-Id"
+            },
+            "description": "Your candidate ID. Keeps your data apart from everyone else's."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error codes: `invalid_request`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error codes: `invalid_credentials`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error codes: `unknown_candidate`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Error codes: `connection_dropped`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Error codes: `unavailable`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Error codes: `timeout`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config": {
+      "get": {
+        "tags": [
+          "Catalogue"
+        ],
+        "summary": "Remote configuration",
+        "description": "No login needed. Read at app start and before paying.",
+        "operationId": "get_config_config_get",
+        "parameters": [
+          {
+            "name": "X-Candidate-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Your candidate ID. Keeps your data apart from everyone else's.",
+              "title": "X-Candidate-Id"
+            },
+            "description": "Your candidate ID. Keeps your data apart from everyone else's."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppConfig"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error codes: `unknown_candidate`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Error codes: `connection_dropped`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Error codes: `unavailable`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Error codes: `timeout`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mensas": {
+      "get": {
+        "tags": [
+          "Catalogue"
+        ],
+        "summary": "Mensas, their tills and menus",
+        "description": "Prices are in cents for each price group.",
+        "operationId": "list_mensas_mensas_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Candidate-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Your candidate ID. Keeps your data apart from everyone else's.",
+              "title": "X-Candidate-Id"
+            },
+            "description": "Your candidate ID. Keeps your data apart from everyone else's."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MensaList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error codes: `unauthorized`, `session_expired`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error codes: `unknown_candidate`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Error codes: `connection_dropped`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Error codes: `unavailable`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Error codes: `timeout`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orders": {
+      "post": {
+        "tags": [
+          "Orders"
+        ],
+        "summary": "Ring up an order (cashier)",
+        "description": "Creates an order at the cashier's till. Show `qrPayload` as a QR code. The order can be paid until `expiresAt` (5 minutes). A repeated Idempotency-Key returns the original order with `Idempotent-Replayed: true`.",
+        "operationId": "create_order_orders_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required. One key per intent: reuse it for every retry of the same request, never for a different one. 1 to 255 characters.",
+              "title": "Idempotency-Key"
+            },
+            "description": "Required. One key per intent: reuse it for every retry of the same request, never for a different one. 1 to 255 characters."
+          },
+          {
+            "name": "X-Candidate-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Your candidate ID. Keeps your data apart from everyone else's.",
+              "title": "X-Candidate-Id"
+            },
+            "description": "Your candidate ID. Keeps your data apart from everyone else's."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOrder"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Order"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error codes: `invalid_request`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error codes: `unauthorized`, `session_expired`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error codes: `forbidden`, `unknown_candidate`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Error codes: `idempotency_mismatch`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Error codes: `connection_dropped`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Error codes: `unavailable`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Error codes: `timeout`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orders/{orderId}": {
+      "get": {
+        "tags": [
+          "Orders"
+        ],
+        "summary": "Get an order",
+        "description": "For the till: poll this for the result. For a payer who scanned the QR: shows the mensa, the items and `amountCents`, the amount for the payer's price group. A cashier sees only orders of their own till.",
+        "operationId": "get_order_orders__orderId__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Orderid"
+            }
+          },
+          {
+            "name": "X-Candidate-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Your candidate ID. Keeps your data apart from everyone else's.",
+              "title": "X-Candidate-Id"
+            },
+            "description": "Your candidate ID. Keeps your data apart from everyone else's."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Order"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error codes: `unauthorized`, `session_expired`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error codes: `unknown_candidate`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error codes: `not_found`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Error codes: `connection_dropped`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Error codes: `unavailable`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Error codes: `timeout`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orders/{orderId}/payments": {
+      "post": {
+        "tags": [
+          "Payments"
+        ],
+        "summary": "Pay an order (payer)",
+        "description": "Pays the order for the logged-in student, staff member or guest. The new payment is `pending` while it is checked, usually for a few seconds and sometimes for minutes; poll `GET /payments/{paymentId}` or `GET /orders/{orderId}` for the outcome.\n\n**Retry with the same Idempotency-Key.** A payment can be recorded even when the response is lost (timeout, 502, 504, dropped connection). Retrying with the same key returns the original payment with `Idempotent-Replayed: true`; it never pays twice. A new key for the same order is refused while a payment is pending or after it is paid.\n\nSend `X-App-Version` from the app; a version below `minAppVersion` is refused with 426.",
+        "operationId": "create_payment_orders__orderId__payments_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Orderid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required. One key per intent: reuse it for every retry of the same request, never for a different one. 1 to 255 characters.",
+              "title": "Idempotency-Key"
+            },
+            "description": "Required. One key per intent: reuse it for every retry of the same request, never for a different one. 1 to 255 characters."
+          },
+          {
+            "name": "X-Candidate-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Your candidate ID. Keeps your data apart from everyone else's.",
+              "title": "X-Candidate-Id"
+            },
+            "description": "Your candidate ID. Keeps your data apart from everyone else's."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePayment"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Payment"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error codes: `invalid_request`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error codes: `unauthorized`, `session_expired`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error codes: `forbidden`, `unknown_candidate`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error codes: `not_found`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Error codes: `order_expired`, `order_payment_in_progress`, `order_already_paid`, `amount_mismatch`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Error codes: `idempotency_mismatch`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "426": {
+            "description": "Error codes: `app_version_unsupported`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Error codes: `payments_disabled`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Error codes: `connection_dropped`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Error codes: `timeout`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/payments": {
+      "get": {
+        "tags": [
+          "Payments"
+        ],
+        "summary": "List and search payments",
+        "description": "Newest first. What a user sees depends on the role: a payer sees their own payments, a cashier the payments of their till, finance all payments. All filters are optional and combine with AND.",
+        "operationId": "list_payments_payments_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "mensaId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mensaid"
+            }
+          },
+          {
+            "name": "tillId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tillid"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "pending",
+                    "confirmed",
+                    "declined"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Created at or after, ISO 8601 with offset.",
+              "title": "From"
+            },
+            "description": "Created at or after, ISO 8601 with offset."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Created before, ISO 8601 with offset.",
+              "title": "To"
+            },
+            "description": "Created before, ISO 8601 with offset."
+          },
+          {
+            "name": "needsAttention",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Needsattention"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Payment ID, order ID or payer ID, or the start of one.",
+              "title": "Q"
+            },
+            "description": "Payment ID, order ID or payer ID, or the start of one."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "X-Candidate-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Your candidate ID. Keeps your data apart from everyone else's.",
+              "title": "X-Candidate-Id"
+            },
+            "description": "Your candidate ID. Keeps your data apart from everyone else's."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error codes: `invalid_request`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error codes: `unauthorized`, `session_expired`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error codes: `unknown_candidate`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Error codes: `connection_dropped`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Error codes: `unavailable`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Error codes: `timeout`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/payments/{paymentId}": {
+      "get": {
+        "tags": [
+          "Payments"
+        ],
+        "summary": "Get a payment with its refunds and full history",
+        "description": "A payer sees only their own payments. A cashier gets 403 for another till's payment.",
+        "operationId": "get_payment_payments__paymentId__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "paymentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Paymentid"
+            }
+          },
+          {
+            "name": "X-Candidate-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Your candidate ID. Keeps your data apart from everyone else's.",
+              "title": "X-Candidate-Id"
+            },
+            "description": "Your candidate ID. Keeps your data apart from everyone else's."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error codes: `unauthorized`, `session_expired`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error codes: `forbidden`, `unknown_candidate`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error codes: `not_found`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Error codes: `connection_dropped`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Error codes: `unavailable`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Error codes: `timeout`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/payments/{paymentId}/refunds": {
+      "post": {
+        "tags": [
+          "Payments"
+        ],
+        "summary": "Refund a payment in full or in part (cashier)",
+        "description": "Only a cashier of the till the payment was made at can refund it. The payment must be `confirmed` and less than 30 days old, and all refunds together may not exceed it (pending refunds count). The refund starts `pending` and becomes `completed` or `failed` within seconds. Retry with the same Idempotency-Key; a new key is a new refund.",
+        "operationId": "create_refund_payments__paymentId__refunds_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "paymentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Paymentid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required. One key per intent: reuse it for every retry of the same request, never for a different one. 1 to 255 characters.",
+              "title": "Idempotency-Key"
+            },
+            "description": "Required. One key per intent: reuse it for every retry of the same request, never for a different one. 1 to 255 characters."
+          },
+          {
+            "name": "X-Candidate-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Your candidate ID. Keeps your data apart from everyone else's.",
+              "title": "X-Candidate-Id"
+            },
+            "description": "Your candidate ID. Keeps your data apart from everyone else's."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRefund"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refund"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error codes: `invalid_request`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error codes: `unauthorized`, `session_expired`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error codes: `forbidden`, `unknown_candidate`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error codes: `not_found`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Error codes: `refund_exceeds_payment`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Error codes: `idempotency_mismatch`, `payment_not_refundable`, `refund_window_closed`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Error codes: `connection_dropped`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Error codes: `unavailable`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Error codes: `timeout`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reports/daily-totals": {
+      "get": {
+        "tags": [
+          "Reports"
+        ],
+        "summary": "Daily totals per mensa and per till (finance)",
+        "description": "Totals for one day in Europe/Berlin. Payments count on the day they were made, refunds on the day they completed. Pending payments are reported apart and are not in the gross.",
+        "operationId": "daily_totals_reports_daily_totals_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "YYYY-MM-DD. Defaults to today.",
+              "title": "Date"
+            },
+            "description": "YYYY-MM-DD. Defaults to today."
+          },
+          {
+            "name": "X-Candidate-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Your candidate ID. Keeps your data apart from everyone else's.",
+              "title": "X-Candidate-Id"
+            },
+            "description": "Your candidate ID. Keeps your data apart from everyone else's."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DailyTotals"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error codes: `invalid_request`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error codes: `unauthorized`, `session_expired`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error codes: `forbidden`, `unknown_candidate`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Error codes: `connection_dropped`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Error codes: `unavailable`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Error codes: `timeout`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AppConfig": {
+        "properties": {
+          "minAppVersion": {
+            "type": "string",
+            "title": "Minappversion",
+            "description": "Older app versions must ask the user to update.",
+            "examples": [
+              "1.0.0"
+            ]
+          },
+          "paymentsEnabled": {
+            "type": "boolean",
+            "title": "Paymentsenabled",
+            "description": "False: show that payments are paused; POST payment returns 503."
+          }
+        },
+        "type": "object",
+        "required": [
+          "minAppVersion",
+          "paymentsEnabled"
+        ],
+        "title": "AppConfig"
+      },
+      "CreateOrder": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OrderLineInput"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "CreateOrder"
+      },
+      "CreatePayment": {
+        "properties": {
+          "amountCents": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Amountcents",
+            "description": "The amount shown to the payer. Refused with amount_mismatch if it differs."
+          }
+        },
+        "type": "object",
+        "required": [
+          "amountCents"
+        ],
+        "title": "CreatePayment"
+      },
+      "CreateRefund": {
+        "properties": {
+          "amountCents": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Amountcents"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "amountCents"
+        ],
+        "title": "CreateRefund"
+      },
+      "DailyTotals": {
+        "properties": {
+          "paymentCount": {
+            "type": "integer",
+            "title": "Paymentcount",
+            "description": "Confirmed payments made that day."
+          },
+          "grossCents": {
+            "type": "integer",
+            "title": "Grosscents",
+            "description": "Sum of confirmed payments made that day."
+          },
+          "refundedCents": {
+            "type": "integer",
+            "title": "Refundedcents",
+            "description": "Sum of refunds completed that day."
+          },
+          "netCents": {
+            "type": "integer",
+            "title": "Netcents"
+          },
+          "pendingCount": {
+            "type": "integer",
+            "title": "Pendingcount",
+            "description": "Payments made that day still being checked."
+          },
+          "pendingCents": {
+            "type": "integer",
+            "title": "Pendingcents"
+          },
+          "date": {
+            "type": "string",
+            "title": "Date",
+            "description": "The day in Europe/Berlin."
+          },
+          "currency": {
+            "type": "string",
+            "const": "EUR",
+            "title": "Currency",
+            "default": "EUR"
+          },
+          "mensas": {
+            "items": {
+              "$ref": "#/components/schemas/MensaTotals"
+            },
+            "type": "array",
+            "title": "Mensas"
+          }
+        },
+        "type": "object",
+        "required": [
+          "paymentCount",
+          "grossCents",
+          "refundedCents",
+          "netCents",
+          "pendingCount",
+          "pendingCents",
+          "date",
+          "mensas"
+        ],
+        "title": "DailyTotals"
+      },
+      "LocalizedText": {
+        "properties": {
+          "de": {
+            "type": "string",
+            "title": "De"
+          },
+          "en": {
+            "type": "string",
+            "title": "En"
+          }
+        },
+        "type": "object",
+        "required": [
+          "de",
+          "en"
+        ],
+        "title": "LocalizedText"
+      },
+      "LoginRequest": {
+        "properties": {
+          "username": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Username",
+            "examples": [
+              "student"
+            ]
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Password",
+            "examples": [
+              "test1234"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "LoginRequest"
+      },
+      "Mensa": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "city": {
+            "type": "string",
+            "title": "City"
+          },
+          "tills": {
+            "items": {
+              "$ref": "#/components/schemas/Till"
+            },
+            "type": "array",
+            "title": "Tills"
+          },
+          "menu": {
+            "items": {
+              "$ref": "#/components/schemas/MenuItem"
+            },
+            "type": "array",
+            "title": "Menu"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "city",
+          "tills",
+          "menu"
+        ],
+        "title": "Mensa"
+      },
+      "MensaList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Mensa"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "MensaList"
+      },
+      "MensaTotals": {
+        "properties": {
+          "paymentCount": {
+            "type": "integer",
+            "title": "Paymentcount",
+            "description": "Confirmed payments made that day."
+          },
+          "grossCents": {
+            "type": "integer",
+            "title": "Grosscents",
+            "description": "Sum of confirmed payments made that day."
+          },
+          "refundedCents": {
+            "type": "integer",
+            "title": "Refundedcents",
+            "description": "Sum of refunds completed that day."
+          },
+          "netCents": {
+            "type": "integer",
+            "title": "Netcents"
+          },
+          "pendingCount": {
+            "type": "integer",
+            "title": "Pendingcount",
+            "description": "Payments made that day still being checked."
+          },
+          "pendingCents": {
+            "type": "integer",
+            "title": "Pendingcents"
+          },
+          "mensa": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "tills": {
+            "items": {
+              "$ref": "#/components/schemas/TillTotals"
+            },
+            "type": "array",
+            "title": "Tills"
+          }
+        },
+        "type": "object",
+        "required": [
+          "paymentCount",
+          "grossCents",
+          "refundedCents",
+          "netCents",
+          "pendingCount",
+          "pendingCents",
+          "mensa",
+          "tills"
+        ],
+        "title": "MensaTotals"
+      },
+      "MenuItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "$ref": "#/components/schemas/LocalizedText"
+          },
+          "prices": {
+            "$ref": "#/components/schemas/Prices"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "prices"
+        ],
+        "title": "MenuItem"
+      },
+      "Order": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "paying",
+              "paid",
+              "expired"
+            ],
+            "title": "Status",
+            "description": "open: can be paid. paying: a payment is being checked. paid. expired: past expiresAt, unpaid."
+          },
+          "mensa": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "till": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OrderLine"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "qrPayload": {
+            "type": "string",
+            "title": "Qrpayload",
+            "description": "Show this as a QR code. It names the order, not an amount."
+          },
+          "currency": {
+            "type": "string",
+            "const": "EUR",
+            "title": "Currency",
+            "default": "EUR"
+          },
+          "amounts": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Prices"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cashier view only: the total for each price group."
+          },
+          "priceGroup": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "student",
+                  "staff",
+                  "guest"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricegroup",
+            "description": "Payer view only."
+          },
+          "amountCents": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amountcents",
+            "description": "Payer view only: what the caller pays."
+          },
+          "paymentId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paymentid",
+            "description": "The payment being checked or that paid the order. For a payer, only their own."
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          },
+          "expiresAt": {
+            "type": "string",
+            "title": "Expiresat"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "Grows with every change. Ignore a response older than one already seen."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "mensa",
+          "till",
+          "items",
+          "qrPayload",
+          "createdAt",
+          "expiresAt",
+          "version"
+        ],
+        "title": "Order"
+      },
+      "OrderLine": {
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "title": "Itemid"
+          },
+          "name": {
+            "$ref": "#/components/schemas/LocalizedText"
+          },
+          "quantity": {
+            "type": "integer",
+            "title": "Quantity"
+          },
+          "unitPrices": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Prices"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cashier view only."
+          },
+          "unitPriceCents": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unitpricecents",
+            "description": "Payer view only: the price for the caller's group."
+          }
+        },
+        "type": "object",
+        "required": [
+          "itemId",
+          "name",
+          "quantity"
+        ],
+        "title": "OrderLine"
+      },
+      "OrderLineInput": {
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "title": "Itemid"
+          },
+          "quantity": {
+            "type": "integer",
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Quantity"
+          }
+        },
+        "type": "object",
+        "required": [
+          "itemId",
+          "quantity"
+        ],
+        "title": "OrderLineInput"
+      },
+      "Payer": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "displayName": {
+            "type": "string",
+            "title": "Displayname"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "displayName"
+        ],
+        "title": "Payer"
+      },
+      "Payment": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "orderId": {
+            "type": "string",
+            "title": "Orderid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "confirmed",
+              "declined"
+            ],
+            "title": "Status",
+            "description": "pending: still being checked; may last minutes. confirmed. declined."
+          },
+          "amountCents": {
+            "type": "integer",
+            "title": "Amountcents"
+          },
+          "currency": {
+            "type": "string",
+            "const": "EUR",
+            "title": "Currency",
+            "default": "EUR"
+          },
+          "priceGroup": {
+            "type": "string",
+            "enum": [
+              "student",
+              "staff",
+              "guest"
+            ],
+            "title": "Pricegroup"
+          },
+          "mensa": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "till": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "payer": {
+            "$ref": "#/components/schemas/Payer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PaymentItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "refundedAmountCents": {
+            "type": "integer",
+            "title": "Refundedamountcents",
+            "description": "Sum of completed refunds."
+          },
+          "pendingRefundAmountCents": {
+            "type": "integer",
+            "title": "Pendingrefundamountcents",
+            "description": "Sum of refunds still being processed."
+          },
+          "refundableAmountCents": {
+            "type": "integer",
+            "title": "Refundableamountcents",
+            "description": "What can still be refunded now."
+          },
+          "needsAttention": {
+            "type": "boolean",
+            "title": "Needsattention"
+          },
+          "attentionReasons": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "pending_too_long",
+                "refund_pending_too_long",
+                "refund_failed"
+              ]
+            },
+            "type": "array",
+            "title": "Attentionreasons"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          },
+          "updatedAt": {
+            "type": "string",
+            "title": "Updatedat"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "orderId",
+          "status",
+          "amountCents",
+          "priceGroup",
+          "mensa",
+          "till",
+          "payer",
+          "items",
+          "refundedAmountCents",
+          "pendingRefundAmountCents",
+          "refundableAmountCents",
+          "needsAttention",
+          "attentionReasons",
+          "createdAt",
+          "updatedAt",
+          "version"
+        ],
+        "title": "Payment"
+      },
+      "PaymentDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "orderId": {
+            "type": "string",
+            "title": "Orderid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "confirmed",
+              "declined"
+            ],
+            "title": "Status",
+            "description": "pending: still being checked; may last minutes. confirmed. declined."
+          },
+          "amountCents": {
+            "type": "integer",
+            "title": "Amountcents"
+          },
+          "currency": {
+            "type": "string",
+            "const": "EUR",
+            "title": "Currency",
+            "default": "EUR"
+          },
+          "priceGroup": {
+            "type": "string",
+            "enum": [
+              "student",
+              "staff",
+              "guest"
+            ],
+            "title": "Pricegroup"
+          },
+          "mensa": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "till": {
+            "$ref": "#/components/schemas/Ref"
+          },
+          "payer": {
+            "$ref": "#/components/schemas/Payer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PaymentItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "refundedAmountCents": {
+            "type": "integer",
+            "title": "Refundedamountcents",
+            "description": "Sum of completed refunds."
+          },
+          "pendingRefundAmountCents": {
+            "type": "integer",
+            "title": "Pendingrefundamountcents",
+            "description": "Sum of refunds still being processed."
+          },
+          "refundableAmountCents": {
+            "type": "integer",
+            "title": "Refundableamountcents",
+            "description": "What can still be refunded now."
+          },
+          "needsAttention": {
+            "type": "boolean",
+            "title": "Needsattention"
+          },
+          "attentionReasons": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "pending_too_long",
+                "refund_pending_too_long",
+                "refund_failed"
+              ]
+            },
+            "type": "array",
+            "title": "Attentionreasons"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          },
+          "updatedAt": {
+            "type": "string",
+            "title": "Updatedat"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "refunds": {
+            "items": {
+              "$ref": "#/components/schemas/Refund"
+            },
+            "type": "array",
+            "title": "Refunds"
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/PaymentEvent"
+            },
+            "type": "array",
+            "title": "History",
+            "description": "Every state change, oldest first."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "orderId",
+          "status",
+          "amountCents",
+          "priceGroup",
+          "mensa",
+          "till",
+          "payer",
+          "items",
+          "refundedAmountCents",
+          "pendingRefundAmountCents",
+          "refundableAmountCents",
+          "needsAttention",
+          "attentionReasons",
+          "createdAt",
+          "updatedAt",
+          "version",
+          "refunds",
+          "history"
+        ],
+        "title": "PaymentDetail"
+      },
+      "PaymentEvent": {
+        "properties": {
+          "at": {
+            "type": "string",
+            "title": "At"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "payment_created",
+              "payment_confirmed",
+              "payment_declined",
+              "refund_requested",
+              "refund_completed",
+              "refund_failed"
+            ],
+            "title": "Type"
+          },
+          "amountCents": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amountcents"
+          },
+          "refundId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refundid"
+          }
+        },
+        "type": "object",
+        "required": [
+          "at",
+          "type",
+          "amountCents",
+          "refundId"
+        ],
+        "title": "PaymentEvent"
+      },
+      "PaymentItem": {
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "title": "Itemid"
+          },
+          "name": {
+            "$ref": "#/components/schemas/LocalizedText"
+          },
+          "quantity": {
+            "type": "integer",
+            "title": "Quantity"
+          },
+          "unitPriceCents": {
+            "type": "integer",
+            "title": "Unitpricecents"
+          }
+        },
+        "type": "object",
+        "required": [
+          "itemId",
+          "name",
+          "quantity",
+          "unitPriceCents"
+        ],
+        "title": "PaymentItem"
+      },
+      "PaymentPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Payment"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nextcursor",
+            "description": "Pass as cursor for the next page. Null on the last page."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "title": "PaymentPage"
+      },
+      "Prices": {
+        "properties": {
+          "student": {
+            "type": "integer",
+            "title": "Student",
+            "description": "Cents."
+          },
+          "staff": {
+            "type": "integer",
+            "title": "Staff",
+            "description": "Cents."
+          },
+          "guest": {
+            "type": "integer",
+            "title": "Guest",
+            "description": "Cents."
+          }
+        },
+        "type": "object",
+        "required": [
+          "student",
+          "staff",
+          "guest"
+        ],
+        "title": "Prices"
+      },
+      "Ref": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "Ref"
+      },
+      "Refund": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "paymentId": {
+            "type": "string",
+            "title": "Paymentid"
+          },
+          "amountCents": {
+            "type": "integer",
+            "title": "Amountcents"
+          },
+          "currency": {
+            "type": "string",
+            "const": "EUR",
+            "title": "Currency",
+            "default": "EUR"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "completed",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          },
+          "updatedAt": {
+            "type": "string",
+            "title": "Updatedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "paymentId",
+          "amountCents",
+          "status",
+          "reason",
+          "createdAt",
+          "updatedAt"
+        ],
+        "title": "Refund"
+      },
+      "Session": {
+        "properties": {
+          "accessToken": {
+            "type": "string",
+            "title": "Accesstoken"
+          },
+          "tokenType": {
+            "type": "string",
+            "const": "Bearer",
+            "title": "Tokentype",
+            "default": "Bearer"
+          },
+          "expiresAt": {
+            "type": "string",
+            "title": "Expiresat",
+            "description": "When the token stops working. Log in again after that."
+          },
+          "user": {
+            "$ref": "#/components/schemas/User"
+          }
+        },
+        "type": "object",
+        "required": [
+          "accessToken",
+          "expiresAt",
+          "user"
+        ],
+        "title": "Session"
+      },
+      "Till": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "Till"
+      },
+      "TillTotals": {
+        "properties": {
+          "paymentCount": {
+            "type": "integer",
+            "title": "Paymentcount",
+            "description": "Confirmed payments made that day."
+          },
+          "grossCents": {
+            "type": "integer",
+            "title": "Grosscents",
+            "description": "Sum of confirmed payments made that day."
+          },
+          "refundedCents": {
+            "type": "integer",
+            "title": "Refundedcents",
+            "description": "Sum of refunds completed that day."
+          },
+          "netCents": {
+            "type": "integer",
+            "title": "Netcents"
+          },
+          "pendingCount": {
+            "type": "integer",
+            "title": "Pendingcount",
+            "description": "Payments made that day still being checked."
+          },
+          "pendingCents": {
+            "type": "integer",
+            "title": "Pendingcents"
+          },
+          "till": {
+            "$ref": "#/components/schemas/Ref"
+          }
+        },
+        "type": "object",
+        "required": [
+          "paymentCount",
+          "grossCents",
+          "refundedCents",
+          "netCents",
+          "pendingCount",
+          "pendingCents",
+          "till"
+        ],
+        "title": "TillTotals"
+      },
+      "User": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "displayName": {
+            "type": "string",
+            "title": "Displayname"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "student",
+              "staff",
+              "guest",
+              "cashier",
+              "finance"
+            ],
+            "title": "Role"
+          },
+          "priceGroup": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "student",
+                  "staff",
+                  "guest"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricegroup",
+            "description": "Set for student, staff and guest."
+          },
+          "tillId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tillid",
+            "description": "Set for a cashier: the one till they work at."
+          },
+          "mensaId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mensaid",
+            "description": "Set for a cashier."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "displayName",
+          "role"
+        ],
+        "title": "User"
+      },
+      "Problem": {
+        "properties": {
+          "code": {
+            "description": "Stable error code to branch on.",
+            "title": "Code",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "integer"
+          },
+          "retryable": {
+            "description": "True if the same request may succeed later. Reuse the same Idempotency-Key.",
+            "title": "Retryable",
+            "type": "boolean"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Detail"
+          }
+        },
+        "required": [
+          "code",
+          "title",
+          "status",
+          "retryable"
+        ],
+        "title": "Problem",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "description": "The accessToken from POST /sessions.",
+        "scheme": "bearer"
+      }
+    }
+  }
+}

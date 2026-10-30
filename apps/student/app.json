@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "Mensa Pay",
+    "slug": "mensa-student",
+    "scheme": "mensa-student",
+    "version": "0.1.0",
+    "platforms": ["ios", "android"],
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "icon": "./assets/icon.png",
+    "newArchEnabled": true,
+    "ios": {
+      "bundleIdentifier": "dev.omerarslan.mensa.student",
+      "supportsTablet": false
+    },
+    "android": {
+      "package": "dev.omerarslan.mensa.student",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1D4ED8"
+      }
+    },
+    "experiments": {
+      "autolinkingModuleResolution": true
+    }
+  }
+}

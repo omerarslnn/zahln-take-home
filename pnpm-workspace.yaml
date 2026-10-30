@@ -1,0 +1,12 @@
+packages:
+  - apps/*
+  - packages/*
+
+# pnpm's default isolated node_modules layout is kept on purpose: Expo SDK 54 supports it, and it
+# stops a package from importing something it did not declare (useful for the platform boundary).
+# If a native build ever fails on module resolution, `nodeLinker: hoisted` is the documented fallback.
+
+# pnpm 10 runs no dependency install scripts unless they are listed. esbuild's script only verifies
+# its platform binary, which pnpm already installs as an optional dependency, so it stays off.
+ignoredBuiltDependencies:
+  - esbuild

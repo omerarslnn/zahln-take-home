@@ -1,0 +1,11 @@
+pnpm-lock.yaml
+brief/
+artifacts/
+**/dist/
+**/.expo/
+apps/*/android/
+apps/*/ios/
+# Generated from the OpenAPI contract; regenerate instead of formatting by hand.
+packages/api/src/generated/
+# Byte-identical copy of the supplied contract; keep it untouched.
+packages/api/openapi/openapi.json
