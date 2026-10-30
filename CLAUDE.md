@@ -36,7 +36,8 @@ automatic offline payment queue or background payment retry.
 ## Commands
 
 ```sh
-pnpm install            # pnpm 10.34.9 via Corepack (packageManager field)
+pnpm install            # pnpm 10.34.9 via Corepack (packageManager field); fetches pinned Node 24.22.2
+pnpm toolchain          # prints the Node.js/pnpm that actually run project scripts
 pnpm check              # format:check + lint + typecheck + test + dashboard production build
 pnpm student | pnpm till | pnpm dashboard     # Metro 8081 | Metro 8082 | Vite 5173
 pnpm bundle:native      # expo export for iOS and Android (both apps)
@@ -45,6 +46,9 @@ pnpm api:smoke          # opt-in live check: GET /config, POST /sessions, GET /m
 pnpm api:spec-diff      # opt-in: compare the live OpenAPI document with the committed copy
 pnpm apk:student        # standalone release APK (debug-keystore signed) into artifacts/android/
 ```
+
+Run tools through `pnpm` so they get the pinned Node.js (`useNodeVersion` in `pnpm-workspace.yaml`,
+mirrored in `.nvmrc` and `engines`). The system `node` on this Mac is 23.11 and is not used by scripts.
 
 ## Boundaries
 
@@ -90,6 +94,11 @@ pnpm apk:student        # standalone release APK (debug-keystore signed) into ar
 
 - Strict TypeScript everywhere. Expo SDK 54 is pinned on purpose: this Mac has Xcode 26.1.1 and
   SDK 55+ needs Xcode 26.2+ (see README). React 19.1.0 everywhere, exact pins.
+- App version: `expo.version` in `apps/*/app.json` (1.0.0, the server's `minAppVersion`), read at
+  runtime as `appVersion` in `apps/*/src/api.ts` and sent as `X-App-Version`. Bump it there; generated
+  native projects pick it up on the next `expo prebuild --clean`.
+- Android builds need JDK 17. `~/.gradle/gradle.properties` on this Mac pins JDK 11 globally; leave it,
+  and build through `pnpm apk:*`, which passes `-Dorg.gradle.java.home` for JDK 17.
 - Styling: NativeWind 4 + Tailwind 3 with the shared preset `@mensa/shared/tailwind-preset`
   (tokens in `packages/shared/src/tokens/tokens.json`). Minimum touch target 48.
 - Comments explain decisions, not syntax. JSDoc on public functions. Keep functions short enough to

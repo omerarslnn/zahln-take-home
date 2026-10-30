@@ -5,10 +5,11 @@
   "description": "ZAHLN frontend take-home: student app, till and Studierendenwerk dashboard in one TypeScript monorepo.",
   "packageManager": "pnpm@10.34.9",
   "engines": {
-    "node": ">=20.19.4"
+    "node": "^24.11.0"
   },
   "scripts": {
     "env:init": "node scripts/env-init.mjs",
+    "toolchain": "node scripts/toolchain.mjs",
     "student": "pnpm --filter @mensa/student start",
     "student:android": "pnpm --filter @mensa/student android",
     "student:ios": "pnpm --filter @mensa/student ios",

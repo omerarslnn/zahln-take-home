@@ -8,6 +8,8 @@ transaction data.
 
 - `packages/api/openapi/openapi.json` is a byte-identical copy of the supplied file
   (SHA-256 `65c44984…e999`). The original stays untouched in the local `brief/` folder.
+- Contents, counted from the file: OpenAPI 3.1.0, 10 paths with 10 operations, and 28 component
+  schemas.
 - `pnpm api:spec-diff` compares the live `https://dev.zahln.de/openapi.json` with the copy after
   parsing. **Result: semantically identical.** The live file is minified and the supplied one is
   pretty-printed; that is the only difference.
@@ -48,9 +50,10 @@ max-age keeps the extra round trip to roughly one per endpoint every 10 minutes.
 1. **`X-Candidate-Id` is declared optional** in every operation, but the email requires it on every
    request. The transport always sends it.
 2. **`X-App-Version` is not a declared parameter.** It is mentioned only in the payment description
-   ("a version below `minAppVersion` is refused with 426"). The native apps send it from `app.json`.
-   **`minAppVersion` is `1.0.0` and the apps are `0.1.0`**, so payments would be refused until the
-   version is raised.
+   ("a version below `minAppVersion` is refused with 426"). The native apps send it on every request
+   from `expo.version` in `app.json` (`appVersion` in `apps/*/src/api.ts`). Server `minAppVersion` is
+   `1.0.0`; both apps were raised from `0.1.0` to `1.0.0` on 2026-10-30. Builds made before that,
+   including the APK in `artifacts/`, still report `0.1.0`.
 3. **Response headers are undocumented**: neither `Idempotent-Replayed` nor `Date` appears in the
    response definitions, although the description relies on both (and CORS exposes both).
 4. **503 on `POST /orders/{id}/payments` lists only `payments_disabled`**, while the overview says any

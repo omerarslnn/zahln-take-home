@@ -3,7 +3,7 @@
     "name": "Mensa Till",
     "slug": "mensa-till",
     "scheme": "mensa-till",
-    "version": "0.1.0",
+    "version": "1.0.0",
     "platforms": ["ios", "android"],
     "orientation": "default",
     "userInterfaceStyle": "light",

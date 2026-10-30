@@ -5,6 +5,9 @@
 Goal: runnable shells for all three surfaces, shared packages with enforced boundaries, a tested
 transport, honest API observations, and an early Android build path. No payment behaviour.
 
+The results below were recorded on system Node 23.11 with app version 0.1.0. The environment was
+updated afterwards; see [Environment fixes before stage 2](#environment-fixes-before-stage-2-2026-10-30).
+
 ### Verification
 
 Kinds: **source** (static checks), **bundle** (JS compiled, nothing installed), **build** (native
@@ -59,39 +62,87 @@ The first APK build attempts took 48 and 18 minutes before failing; the successf
 minutes, with the machine heavily loaded (load average around 90, little free memory). These times
 reflect this machine's load and are not representative build times.
 
-### Manual steps
+## Environment fixes before stage 2 (2026-10-30)
+
+### Changes
+
+- **Node 24 LTS for the project**: `useNodeVersion: 24.22.2` in `pnpm-workspace.yaml` makes pnpm
+  download that exact Node.js and run every `pnpm` script, `pnpm exec` and `pnpm node` with it, and
+  put it first on PATH for tools those scripts start. No Node version manager (nvm, fnm, Volta, asdf,
+  mise, nodenv) is installed on this Mac, so pnpm's own mechanism is used instead of a global
+  switch. `.nvmrc` names the same version for anyone who uses one; `engines.node` is `^24.11.0`,
+  the Node 24 LTS line. `pnpm toolchain` prints what actually runs.
+- **pnpm**: still pinned at 10.34.9 (`packageManager`). No dependency versions changed: nothing
+  failed on Node 24.
+- **App versions**: student and till `0.1.0` → `1.0.0` (`expo.version` in `app.json`, mirrored in
+  `package.json`), matching the server's `minAppVersion`. `appVersion` in `apps/*/src/api.ts` is the
+  runtime source sent as `X-App-Version`. Payment gates (forced update, payments paused) are not
+  implemented.
+- **JDK**: unchanged and verified. The global `~/.gradle/gradle.properties` pin to Temurin 11 stays;
+  `pnpm apk:*` keeps passing JDK 17 to Gradle.
+- **Disk**: generated build output removed (see below). Source, the generated Android project files
+  and its `debug.keystore` were kept; global caches, SDKs and other projects were not touched.
+- **Docs**: setup and versions corrected. The contract has 28 component schemas, counted from the
+  file; an earlier handoff message said 27.
+
+### Verification
+
+| Check                                                    | Kind         | Result            | Evidence / notes                                                                                                                                                 |
+| -------------------------------------------------------- | ------------ | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm install` with the pinned runtime                   | setup        | passed            | pnpm fetched Node 24.22.2 (199 MB in `~/Library/pnpm/nodejs`). `engines` `^24.11.0` was accepted although pnpm itself runs on Node 23.11.                        |
+| `pnpm toolchain`                                         | setup        | passed            | Scripts and the tools they start: v24.22.2. pnpm 10.34.9 itself: system Node v23.11.0.                                                                           |
+| `pnpm node`, `pnpm exec`, `pnpm --filter … exec`         | setup        | passed            | All v24.22.2. `pnpm dlx` and direct `./node_modules/.bin/…` calls use the system Node (23.11).                                                                   |
+| `pnpm check`                                             | source/build | passed            | On Node 24.22.2: Prettier, ESLint, typecheck ×6, 26/26 tests, dashboard build.                                                                                   |
+| `pnpm bundle:native`                                     | bundle       | passed            | On Node 24.22.2: iOS and Android Hermes bundles for both apps.                                                                                                   |
+| `expo install --check` (both apps)                       | source       | passed            | Dependencies match SDK 54.                                                                                                                                       |
+| `expo-doctor` 1.21.5 (both apps)                         | source       | passed (18/18)    | On Node 24.22.2 via `pnpm exec npx`. Via `pnpm dlx` it also passes but runs on Node 23.11 and warns about its own engine.                                        |
+| Resolved Expo config (`expo config --type public`)       | source       | passed            | Both apps: `version` 1.0.0, IDs unchanged, `versionCode`/`buildNumber` default 1, SDK 54.                                                                        |
+| Gradle daemon JDK (`gradlew --version`)                  | build config | passed            | Without override: Temurin 11 (from `~/.gradle/gradle.properties`). With the APK script's `-Dorg.gradle.java.home`: Zulu 17.0.13.                                 |
+| Gradle-time autolinking on Node 24                       | build step   | passed            | `expo-modules-autolinking`: 8 Expo modules and 5 React Native native modules resolved for Android.                                                               |
+| Student APK at version 1.0.0                             | build        | not run           | Not rebuilt: no unresolved native concern. `apps/student/android/app/build.gradle` still says `versionName "0.1.0"`; the next `pnpm apk:student` regenerates it. |
+| Physical devices, camera/QR, biometrics, PIN, tablet AVD | runtime      | not run / blocked | Unchanged: untested.                                                                                                                                             |
+
+The next APK is signed with the same template debug key (SHA-1 `5E:8F:16:…:F6:25`, React Native's
+published debug keystore), so it can be installed over the 0.1.0 build with `adb install -r`.
+
+**Disk** (free on the home volume): 6.89 GiB before; 8.20 GiB after removing about 1.6 GB of generated
+build output (610 MB of Gradle/CMake output in `apps/student/android`, 986 MB in 11 `android/build`
+and `android/.cxx` folders inside installed packages); 8.01 GiB after verification, which added the
+pinned Node download and regenerated bundles. The next APK build recreates most of the removed output.
+
+## Manual steps
 
 1. **pnpm on PATH**: `corepack enable pnpm` (undo: `corepack disable pnpm`), or prefix commands with
    `corepack`.
-2. **Node 24 LTS (recommended)**: Node 23.11 is end-of-life and excluded by ESLint 10, expo-doctor's
-   engines and Expo SDK 58. For example, `brew install node@24` and put `/opt/homebrew/opt/node@24/bin`
-   first on PATH (a shell-profile edit, your choice), or use a version manager. Then `pnpm install`,
-   and upgrade ESLint 9 → 10 in a separate commit.
+2. **System Node (optional)**: project scripts already run on Node 24.22.2. pnpm itself, `pnpm dlx`
+   and direct binary calls still use Homebrew's Node 23.11, which is end-of-life. To change that,
+   install Node 24 system-wide (for example `brew install node@24`, then put it first on PATH in
+   your shell profile) or a version manager that reads `.nvmrc`. This is a global change, so it is your
+   call.
 3. **Gradle JDK pin**: `~/.gradle/gradle.properties` line 1 pins
-   `org.gradle.java.home=/Library/Java/JavaVirtualMachines/temurin-11.jdk/Contents/Home`. The APK
-   script works around it; plain `./gradlew` or Android Studio builds of this project need JDK 17.
-   Change or remove the line if no other project needs JDK 11.
-4. **Android tablet emulator**: install Android Studio → Device Manager → create a tablet device
+   `org.gradle.java.home=/Library/Java/JavaVirtualMachines/temurin-11.jdk/Contents/Home`. `pnpm apk:*`
+   overrides it; plain `./gradlew`, Android Studio and `expo run:android` still get JDK 11. Change or
+   remove the line only if no other project needs it.
+4. **APK 1.0.0**: `pnpm apk:student` (both ABIs for the review build) regenerates `android/` and
+   writes `artifacts/android/mensa-student-1.0.0-armeabi-v7a+arm64-v8a.apk`. It takes a long time
+   and needs about 1.6 GB of build space.
+5. **Android tablet emulator**: install Android Studio → Device Manager → create a tablet device
    (e.g. Pixel Tablet) with the already installed API 36.1 arm64 Google Play image.
-5. **iPhone 17 Pro**: Xcode → Settings → Accounts → add your Apple ID (a free personal team works;
+6. **iPhone 17 Pro**: Xcode → Settings → Accounts → add your Apple ID (a free personal team works;
    profiles last 7 days). On the phone, enable Developer Mode (Settings → Privacy & Security). Then
-   `cd apps/student && npx expo run:ios --device` (generates `ios/`, runs CocoaPods, needs several GB).
-   If the bundle ID is taken for your team, change `ios.bundleIdentifier` in `app.json`.
-6. **Android phone (if borrowed)**: enable USB debugging, then `pnpm apk:student` (both ABIs) and
-   `adb install -r artifacts/android/<apk>`.
-7. **Disk**: about 6 GB free after the first Android build. `apps/student/android/` (generated) can be
-   deleted; old simulator runtimes and old Gradle versions under `~/.gradle` are candidates to review
-   before any iOS native build or Xcode update.
-8. **Git identity**: the commit uses your global identity (`arslan@fireflow.de`). To use another
-   address for this repository only: `git config user.email "<address>"`, then
-   `git commit --amend --reset-author --no-edit` (nothing has been pushed).
-9. **Later accounts**: private GitHub repository shared with the reviewers; a dashboard host
-   (e.g. Vercel, Netlify or Cloudflare Pages); optionally an Expo account for EAS. None started.
+   `cd apps/student && pnpm exec expo run:ios --device` (generates `ios/`, runs CocoaPods, needs
+   several GB). If the bundle ID is taken for your team, change `ios.bundleIdentifier` in `app.json`.
+7. **Android phone (if borrowed)**: enable USB debugging, then `adb install -r` the rebuilt APK.
+8. **Disk**: about 8 GB free. Old simulator runtimes and old Gradle versions under `~/.gradle` are
+   candidates to review before any iOS native build or Xcode update.
+9. **Accounts**: the private GitHub repository exists (`omerarslnn/zahln-take-home`); invite the
+   reviewers when ready. A dashboard host (e.g. Vercel, Netlify or Cloudflare Pages) and, optionally,
+   an Expo account for EAS are not set up.
 
-### Recommended scope for stage 2: payment foundations
+## Recommended scope for stage 2: payment foundations
 
-1. Raise both apps to version `1.0.0` (server `minAppVersion`) and handle `GET /config` at start:
-   forced update and "payments paused".
+1. Handle `GET /config` at start: forced update when `appVersion` is below `minAppVersion`, and
+   "payments paused" when `paymentsEnabled` is false.
 2. Observe and record `qrPayload` from one cashier `POST /orders` (the first deliberate write).
 3. `@mensa/domain`: payment and refund intent models (draft → submitting → unknown → pending →
    confirmed/declined, refund pending/completed/failed), outcome classification from

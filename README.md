@@ -22,25 +22,28 @@ dashboard) in one TypeScript monorepo, built against the supplied mock API.
 
 Verified on this setup (see [docs/progress.md](docs/progress.md) for exact results):
 
-| Tool          | Version used                          | Notes                                                                                                       |
-| ------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| macOS / CPU   | 26.5.1, Apple M2 (arm64), 16 GB       |                                                                                                             |
-| Node.js       | 23.11.0                               | Works, but Node 23 is end-of-life. **Node 24 LTS recommended** (ESLint 10 and Expo SDK 58 exclude Node 23). |
-| pnpm          | 10.34.9 via Corepack                  | Pinned in `package.json#packageManager`.                                                                    |
-| Xcode         | 26.1.1                                | This is why Expo SDK 54 is used: SDK 55 needs Xcode 26.2+, SDK 56–58 need 26.4+.                            |
-| JDK           | 17 (Zulu)                             | React Native 0.81 needs JDK 17.                                                                             |
-| Android SDK   | platform 36, emulator 36.3, phone AVD | NDK 27.1 and CMake are downloaded by Gradle on the first native build (license already accepted).           |
-| Google Chrome | 156                                   | Only for the headless browser check.                                                                        |
+| Tool          | Version used                          | Notes                                                                                                                                                                        |
+| ------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| macOS / CPU   | 26.5.1, Apple M2 (arm64), 16 GB       |                                                                                                                                                                              |
+| Node.js       | 24.22.2 (LTS), pinned                 | pnpm downloads it on install (`useNodeVersion` in `pnpm-workspace.yaml`) and runs every `pnpm` script with it; `.nvmrc` names the same version. Check with `pnpm toolchain`. |
+| pnpm          | 10.34.9 via Corepack                  | Pinned in `package.json#packageManager`. pnpm itself runs on whatever `node` is on PATH (here Homebrew's 23.11).                                                             |
+| Xcode         | 26.1.1                                | This is why Expo SDK 54 is used: SDK 55 needs Xcode 26.2+, SDK 56–58 need 26.4+.                                                                                             |
+| JDK           | 17 (Zulu 17.0.13)                     | React Native 0.81 needs JDK 17. `pnpm apk:*` passes it to Gradle explicitly, because `~/.gradle/gradle.properties` on this Mac pins JDK 11.                                  |
+| Android SDK   | platform 36, emulator 36.3, phone AVD | NDK 27.1 and CMake are downloaded by Gradle on the first native build (license already accepted).                                                                            |
+| Google Chrome | 156                                   | Only for the headless browser check.                                                                                                                                         |
 
 ## Setup
 
 ```sh
 corepack enable pnpm   # once per machine: puts the pinned pnpm on PATH (undo: corepack disable pnpm)
-pnpm install
+pnpm install           # first run also downloads the pinned Node.js 24.22.2 for project scripts
 pnpm env:init          # copies each .env.example to .env (never overwrites)
+pnpm toolchain         # shows the Node.js and pnpm versions that actually run the scripts
 ```
 
-Without `corepack enable`, prefix commands with `corepack`, e.g. `corepack pnpm install`.
+Without `corepack enable`, prefix commands with `corepack`, e.g. `corepack pnpm install`. Run project
+tools through `pnpm` (scripts, `pnpm exec`, `pnpm node`); calling `./node_modules/.bin/…` directly
+uses the system `node` instead of the pinned version.
 
 ## Run
 
@@ -82,15 +85,20 @@ OpenAPI description's "Seeded logins" table; keep it out of committed files.
 ```sh
 pnpm apk:student                       # armeabi-v7a + arm64-v8a (covers low-end phones with 32-bit userspace)
 ANDROID_ABIS=arm64-v8a pnpm apk:student  # faster, emulator/modern-phone only
-adb install -r artifacts/android/mensa-student-0.1.0-<abis>.apk
+adb install -r artifacts/android/mensa-student-1.0.0-<abis>.apk
 ```
 
-The script runs `expo prebuild` (regenerating the git-ignored `android/` folder) and
-`gradlew assembleRelease`. The JavaScript is compiled to Hermes bytecode inside the APK, so it runs
-without Metro. Limitations: it is signed with the generated **debug keystore** (installable, but not a
-Play Store build and not updatable by a differently signed build), it is a foundation shell, and the app
-version is 0.1.0 while the server's `minAppVersion` is 1.0.0 (payments would be refused with 426 until
-the version is raised). EAS Build is the alternative route; it needs an Expo account and was not used.
+The script runs `expo prebuild --clean` (regenerating the git-ignored `android/` folder from
+`app.json`) and `gradlew assembleRelease` with JDK 17. The JavaScript is compiled to Hermes bytecode
+inside the APK, so it runs without Metro. Limitations: it is signed with the template **debug keystore**
+(installable, but not a Play Store build; a build signed with another key cannot update it) and it is a
+foundation shell. The only APK built so far is `mensa-student-0.1.0-arm64-v8a.apk`, from before the
+version change; the next `pnpm apk:student` produces 1.0.0. EAS Build is the alternative route; it
+needs an Expo account and was not used.
+
+**App version:** `expo.version` in each `apps/*/app.json` (now `1.0.0`, equal to the server's
+`minAppVersion`). Builds turn it into Android's versionName and iOS's CFBundleShortVersionString; at
+runtime `appVersion` in `apps/*/src/api.ts` reads it and the transport sends it as `X-App-Version`.
 
 ## Configuration and what is public
 
@@ -122,28 +130,30 @@ More: [docs/architecture.md](docs/architecture.md) · [docs/api-notes.md](docs/a
 
 ## Technology choices
 
-| Choice                                                  | Why                                                                                                                                                  |
-| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Expo SDK 54, React Native 0.81.5, React 19.1.0          | Newest stable SDK this Mac's Xcode 26.1.1 can build for iOS; still patched (54.0.38). Upgrade path to SDK 58 needs Xcode 26.4+ and Node 22.13+/24.   |
-| pnpm 10 workspaces, isolated layout                     | Stops packages from using undeclared dependencies. Expo supports isolated installs from SDK 54. No Turborepo/Nx: not needed at this size.            |
-| NativeWind 4.2.7 + Tailwind 3.4.19 everywhere           | NativeWind's stable line requires Tailwind 3; using Tailwind 3 on the web too lets one preset carry the design tokens to all three apps.             |
-| Vite 8 + React 19.1.0 for the dashboard                 | React pinned to the Expo version, so one React instance exists in the workspace.                                                                     |
-| openapi-typescript 7                                    | Types generated from the contract; the transport itself is hand-written (~100 lines) to keep retry/idempotency semantics explicit.                   |
-| TypeScript 5.9, ESLint 9 (flat, type-aware), Prettier 3 | TypeScript 7 is not supported by typescript-eslint yet; ESLint 10 excludes Node 23 (ESLint 9 is deprecated upstream: upgrade together with Node 24). |
-| `node:test` via tsx                                     | Platform-neutral logic is tested without a Jest/Babel setup.                                                                                         |
+| Choice                                                  | Why                                                                                                                                                              |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Expo SDK 54, React Native 0.81.5, React 19.1.0          | Newest stable SDK this Mac's Xcode 26.1.1 can build for iOS; still patched (54.0.38). Upgrading to SDK 58 needs Xcode 26.4+ (Node 24 is already in place).       |
+| pnpm 10 workspaces, isolated layout                     | Stops packages from using undeclared dependencies. Expo supports isolated installs from SDK 54. No Turborepo/Nx: not needed at this size.                        |
+| NativeWind 4.2.7 + Tailwind 3.4.19 everywhere           | NativeWind's stable line requires Tailwind 3; using Tailwind 3 on the web too lets one preset carry the design tokens to all three apps.                         |
+| Vite 8 + React 19.1.0 for the dashboard                 | React pinned to the Expo version, so one React instance exists in the workspace.                                                                                 |
+| openapi-typescript 7                                    | Types generated from the contract; the transport itself is hand-written (~100 lines) to keep retry/idempotency semantics explicit.                               |
+| TypeScript 5.9, ESLint 9 (flat, type-aware), Prettier 3 | TypeScript 7 is not supported by typescript-eslint yet. ESLint 9 is deprecated upstream; ESLint 10 runs on the pinned Node 24 but is deferred to its own change. |
+| `node:test` via tsx                                     | Platform-neutral logic is tested without a Jest/Babel setup.                                                                                                     |
 
 ## Known blockers and limitations
 
-- **No payment flow yet** (by design for stage 1).
-- `minAppVersion` on the server is `1.0.0`; the apps are `0.1.0`. Raise the version before payments.
+- **No payment flow yet** (by design for stage 1). Forced-update and payments-paused handling of
+  `GET /config` are not implemented either.
 - `qrPayload` format is not specified and not yet observed (needs a cashier `POST /orders`, out of scope here).
 - iPhone (physical): App Store Expo Go cannot open SDK 54 projects; a development build needs Apple
   signing in Xcode (manual).
 - No Android tablet AVD exists (no Android Studio / `avdmanager` installed). The till's tablet layout
   was verified on the iPad simulator and on the phone emulator with tablet screen metrics.
-- Only the `arm64-v8a` student APK has been built and installed so far; the dual-ABI review APK and
-  the till APK have not been built yet.
-- Disk: about 6 GB free after the first Android build. Native builds (NDK, Gradle caches,
+- Only the `arm64-v8a` student APK (version 0.1.0) has been built and installed so far; the 1.0.0
+  rebuild, the dual-ABI review APK and the till APK have not been built yet.
+- Plain `./gradlew`, Android Studio and `expo run:android` still get the JDK 11 pin from
+  `~/.gradle/gradle.properties`; only `pnpm apk:*` overrides it.
+- Disk: about 8 GB free after removing generated build outputs. Native builds (NDK, Gradle caches,
   simulators) are tight.
 - Dashboard deployment, CI, crash reporting: later stages.
 

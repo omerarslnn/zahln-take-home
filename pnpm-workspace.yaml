@@ -6,6 +6,10 @@ packages:
 # stops a package from importing something it did not declare (useful for the platform boundary).
 # If a native build ever fails on module resolution, `nodeLinker: hoisted` is the documented fallback.
 
+# Node.js for every `pnpm run` script and for `pnpm node`: pnpm downloads this exact version, so
+# project commands run on Node 24 LTS whatever `node` is on PATH. Keep it in step with .nvmrc.
+useNodeVersion: 24.22.2
+
 # pnpm 10 runs no dependency install scripts unless they are listed. esbuild's script only verifies
 # its platform binary, which pnpm already installs as an optional dependency, so it stays off.
 ignoredBuiltDependencies:

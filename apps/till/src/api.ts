@@ -8,11 +8,16 @@ const apiConfig = parsePublicApiConfig({
   candidateId: process.env.EXPO_PUBLIC_CANDIDATE_ID,
 });
 
+/**
+ * This build's release version: `expo.version` in app.json, the value that also becomes Android's
+ * versionName and iOS's CFBundleShortVersionString. Sent as X-App-Version on every request; the API
+ * refuses payments from versions below its `minAppVersion` (currently 1.0.0).
+ */
+export const appVersion = Constants.expoConfig?.version;
+
 /** Null when the build is missing its public configuration; the UI then says what is missing. */
 export const apiClient = apiConfig.ok
-  ? createApiClient(
-      createTransport({ ...apiConfig.config, appVersion: Constants.expoConfig?.version }),
-    )
+  ? createApiClient(createTransport({ ...apiConfig.config, appVersion }))
   : null;
 
 const ENV_NAMES = {
