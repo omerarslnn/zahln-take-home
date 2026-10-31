@@ -9,7 +9,7 @@ export const en = {
 
   'foundation.badge': 'Foundation shell',
   'foundation.notice':
-    'This build only proves the project setup. Paying, refunds and reports are not implemented yet.',
+    'This build has no payment screens yet. Paying, refunds and reports come in the next stages.',
   'foundation.tokens': 'Shared design tokens',
   'foundation.formatting': 'Shared formatting',
   'foundation.sampleAmount': 'Sample amount, not a real price',
@@ -33,6 +33,30 @@ export const en = {
   'connection.serverTimeUnavailable':
     'Server time unreadable: Date header missing or not exposed to the browser (CORS).',
   'connection.configMissing': 'API configuration incomplete. Missing: {names}',
+
+  'payments.title': 'Payments',
+  'payments.checking': 'Checking whether payments are available…',
+  'payments.open': 'Payments are available.',
+  'payments.paused': 'Payments are paused by the server. Earlier payments can still be checked.',
+  'payments.updateRequired':
+    'This app version ({current}) is older than the required {minimum}. Please update the app; new payments are blocked until then.',
+  'payments.updateRequiredUnknown':
+    'This app version ({current}) is no longer accepted. Please update the app; new payments are blocked until then.',
+  'payments.configUnavailable':
+    'Payment availability could not be checked. New payments stay blocked until it can be.',
+  'payments.invalidVersion': 'The app or server version is invalid, so new payments are blocked.',
+  'payments.notConfigured': 'The API is not configured, so payments are unavailable.',
+
+  'storage.title': 'Secure storage check',
+  'storage.description':
+    "Saves, reads and deletes a test record in this device's secure storage, where unfinished payments are kept.",
+  'storage.run': 'Check secure storage',
+  'storage.running': 'Checking…',
+  'storage.ok': 'Secure storage works: {bytes} bytes saved, read back and deleted.',
+  'storage.failed': 'Secure storage failed while trying to {step} the test record.',
+  'storage.step.save': 'save',
+  'storage.step.load': 'read back',
+  'storage.step.remove': 'delete',
 
   'student.title': 'Mensa Pay',
   'student.next':
@@ -60,7 +84,7 @@ export const de: Record<MessageKey, string> = {
 
   'foundation.badge': 'Grundgerüst',
   'foundation.notice':
-    'Dieser Build prüft nur das Projekt-Setup. Bezahlen, Erstattungen und Berichte sind noch nicht umgesetzt.',
+    'Dieser Build hat noch keine Zahlungsbildschirme. Bezahlen, Erstattungen und Berichte folgen in den nächsten Stufen.',
   'foundation.tokens': 'Gemeinsame Design-Tokens',
   'foundation.formatting': 'Gemeinsame Formatierung',
   'foundation.sampleAmount': 'Beispielbetrag, kein echter Preis',
@@ -85,6 +109,32 @@ export const de: Record<MessageKey, string> = {
   'connection.serverTimeUnavailable':
     'Serverzeit nicht lesbar: Date-Header fehlt oder ist für den Browser nicht freigegeben (CORS).',
   'connection.configMissing': 'API-Konfiguration unvollständig. Es fehlt: {names}',
+
+  'payments.title': 'Zahlungen',
+  'payments.checking': 'Es wird geprüft, ob Zahlungen verfügbar sind …',
+  'payments.open': 'Zahlungen sind verfügbar.',
+  'payments.paused':
+    'Zahlungen sind serverseitig pausiert. Frühere Zahlungen können weiterhin geprüft werden.',
+  'payments.updateRequired':
+    'Diese App-Version ({current}) ist älter als die erforderliche Version {minimum}. Bitte aktualisiere die App; neue Zahlungen sind bis dahin gesperrt.',
+  'payments.updateRequiredUnknown':
+    'Diese App-Version ({current}) wird nicht mehr akzeptiert. Bitte aktualisiere die App; neue Zahlungen sind bis dahin gesperrt.',
+  'payments.configUnavailable':
+    'Die Zahlungsverfügbarkeit konnte nicht geprüft werden. Neue Zahlungen bleiben bis dahin gesperrt.',
+  'payments.invalidVersion':
+    'Die App- oder Serverversion ist ungültig, daher sind neue Zahlungen gesperrt.',
+  'payments.notConfigured': 'Die API ist nicht konfiguriert, daher sind Zahlungen nicht möglich.',
+
+  'storage.title': 'Prüfung des sicheren Speichers',
+  'storage.description':
+    'Speichert, liest und löscht einen Testeintrag im sicheren Speicher dieses Geräts, in dem unabgeschlossene Zahlungen gesichert werden.',
+  'storage.run': 'Sicheren Speicher prüfen',
+  'storage.running': 'Wird geprüft …',
+  'storage.ok': 'Sicherer Speicher funktioniert: {bytes} Bytes gespeichert, gelesen und gelöscht.',
+  'storage.failed': 'Sicherer Speicher fehlgeschlagen beim {step} des Testeintrags.',
+  'storage.step.save': 'Speichern',
+  'storage.step.load': 'Zurücklesen',
+  'storage.step.remove': 'Löschen',
 
   'student.title': 'Mensa Pay',
   'student.next':

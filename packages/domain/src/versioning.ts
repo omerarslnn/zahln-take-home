@@ -18,3 +18,18 @@ export function newerOf<T extends Versioned>(current: T | undefined, incoming: T
   }
   return incoming.version > current.version ? incoming : current;
 }
+
+/**
+ * Whether `incoming` is a later state of an order than `known`: a higher version, with one
+ * exception observed on the live API (2026-10-31). An order turns from `open` to `expired` when its
+ * time runs out WITHOUT a new version, although the contract says the version grows with every
+ * change. So at an equal version `expired` replaces `open`; a stale `open` never replaces `expired`,
+ * and no other equal-version change is accepted.
+ */
+export function isLaterOrderState(
+  known: { version: number; status: string },
+  incoming: { version: number; status: string },
+): boolean {
+  if (incoming.version !== known.version) return incoming.version > known.version;
+  return known.status === 'open' && incoming.status === 'expired';
+}

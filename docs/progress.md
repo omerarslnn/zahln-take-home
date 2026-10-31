@@ -110,6 +110,101 @@ build output (610 MB of Gradle/CMake output in `apps/student/android`, 986 MB in
 and `android/.cxx` folders inside installed packages); 8.01 GiB after verification, which added the
 pinned Node download and regenerated bundles. The next APK build recreates most of the removed output.
 
+## Stage 2: payment rules, intents, sessions and reconciliation (2026-10-31)
+
+Goal: the rules that keep money from moving twice and keep screens truthful, as tested domain code,
+wired into both native apps, before any payment screen exists. The architecture is described in
+[architecture.md](architecture.md); live observations in [api-notes.md](api-notes.md).
+
+### What was built
+
+- **`@mensa/api`**: typed client for all ten operations; runtime decoders for config, sessions,
+  mensas, orders, payments, payment details, payment pages, refunds and daily totals; mandatory
+  branded idempotency keys on writes; strict timestamp and HTTP-date parsing; server `Date` samples
+  reported to a callback.
+- **`@mensa/domain`**: intents (`intent.ts`) and their controller (`intent-controller.ts`), the
+  storage contract (`intent-store.ts`), write classification (`write-outcome.ts`), the session
+  coordinator (`session.ts`), the server clock (`server-clock.ts`), the payment gate
+  (`payment-gate.ts`, `app-version.ts`), the resource cache and order-version rule
+  (`resource-cache.ts`, `versioning.ts`), bounded polling (`poller.ts`) and the QR parser (`qr.ts`).
+- **Apps**: an Expo SecureStore `IntentStore` and `expo-crypto` keys in both apps, a
+  `PaymentServicesProvider` (gate, session coordinator, store, one controller per signed-in user,
+  foreground handling), the gate state on the student home screen, and a secure-storage self-check in
+  both apps. There is still no sign-in, scan, pay, history, order or refund screen.
+- **Live probe**: `pnpm api:order-probe` creates one cashier order through the real intent path to
+  observe the QR format (`.local/` holds its saved intent; git-ignored).
+
+### Verification
+
+Kinds as in stage 1, plus **tests** (deterministic, against a simulated server), **mutation**
+(a deliberate bug must make a test fail) and **live** (requests to `dev.zahln.de`).
+
+| Check                                                                 | Kind         | Result                    | Evidence / notes                                                                                                                                                                                                                          |
+| --------------------------------------------------------------------- | ------------ | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm check` (Prettier, ESLint, typecheck ×6, tests, dashboard build) | source/build | passed                    | Final run 2026-10-31 on Node 24.22.2. Dashboard bundle 205 kB JS (66 kB gzip).                                                                                                                                                            |
+| Unit and orchestration tests                                          | tests        | passed (80/80, 22 suites) | Real transport, validation, controller and session code against `testing/fake-server.ts` at the `fetch` level. They prove client behaviour under **simulated** server effects, not the real server's behaviour.                           |
+| Mutation checks (20 single-point bugs)                                | mutation     | 19 killed, 1 survived     | See the list below.                                                                                                                                                                                                                       |
+| `pnpm bundle:native` (iOS + Android, both apps)                       | bundle       | passed                    | Hermes bytecode. The simulated server, harness, in-memory store, file store and test credentials appear in none of the four bundles (string scan).                                                                                        |
+| `expo install --check` (student, till)                                | source       | passed                    | `expo-secure-store` 15.0.8 and `expo-crypto` 15.0.9 match SDK 54.                                                                                                                                                                         |
+| `expo-doctor` 1.21.5 (student, till)                                  | source       | passed (18/18 each)       |                                                                                                                                                                                                                                           |
+| Student APK 1.0.0 (`ANDROID_ABIS=arm64-v8a`)                          | build        | passed                    | `artifacts/android/mensa-student-1.0.0-arm64-v8a.apk`, 28.1 MB, versionName 1.0.0, versionCode 1, minSdk 24, targetSdk 36, debug-keystore signed. The merged manifest has SecureStore's backup and data-extraction exclusion rules.       |
+| APK on the Android 16 emulator (arm64), Metro stopped                 | runtime      | passed                    | Fresh install, launch, no JS errors in logcat. Home shows "Payments are available." (`GET /config` from the release build). Secure-storage check: "273 bytes saved, read back and deleted", in English and German. Button 126 px = 48 dp. |
+| Till in Expo Go 54 on the same emulator                               | runtime      | passed                    | Renders without a gate card; secure-storage check passed (273 bytes). Expo Go's SecureStore module, not a till build.                                                                                                                     |
+| Order probe (`pnpm api:order-probe`)                                  | live         | passed, with one bug      | Two cashier orders were created where one was intended; see problem 1. No payments or refunds sent. Both orders read back later as `expired`, version 1, unpaid.                                                                          |
+| Read-only live checks                                                 | live         | passed                    | QR envelope of both orders; `payer.id` = session `user.id` for all 69 payments of the three seeded payers; order expiry keeps the version (both orders).                                                                                  |
+| Dual-ABI APK, till APK                                                | build        | not run                   | One APK was enough to prove the new native modules; disk is tight.                                                                                                                                                                        |
+| iOS simulator or device for stage 2                                   | runtime      | not run                   | The adapter was exercised on Android only.                                                                                                                                                                                                |
+| Physical Android or iOS device                                        | runtime      | not run                   | `adb devices` listed no phone (only the emulator). No physical test is claimed.                                                                                                                                                           |
+| TalkBack / VoiceOver announcements                                    | runtime      | not run                   | Live regions and the iOS announcement are in the code; no screen reader was run.                                                                                                                                                          |
+| OS process-kill recovery                                              | runtime      | not run                   | No screen creates an intent yet. The restart tests simulate a restart inside one JavaScript process (new controller, same store object); that is not an OS process kill.                                                                  |
+| Live payments, refunds, 426, 503, session expiry                      | live         | not run                   | Payment and refund writes are only simulated in this stage. Live config stayed `minAppVersion=1.0.0`, `paymentsEnabled=true`, so the app showed only the open gate.                                                                       |
+
+**Mutation checks** (each applied alone, full suite run, file restored; script kept outside the repo):
+killed: a refusal on a retry settling an earlier ambiguous attempt; ignoring the replay window;
+sending although saving failed; accepting a lower payment version; a cache without the version rule;
+using a late first response after an account switch (first survived; the test "discards a first
+response that arrives after an account switch" was added); using a late repeated response after a
+switch; one re-login per expiry instead of a shared one; not checking the re-login's user; showing
+`pending` as confirmed; accepting a prefix-search hit for another order; fractional server time
+(3 tests fail); ignoring unreadable records; reading gateway errors as final refusals; skipping the
+refund capacity check; ignoring the payment gate; rejecting an order's equal-version expiry in the
+cache, or in the intent; a second refund while the first is unresolved.
+**Survived:** removing the payer check from payment recovery. A payer's `GET /orders` and
+`GET /payments` only ever show that payer's payments (the simulated server enforces it, and the live
+check above confirmed it for 69 payments), so no test can reach the check; it stays as defence in
+depth.
+
+### Problems found by verification, and fixes
+
+1. **A second live order.** The first probe run saved its intent with a fractional `firstSentAt`
+   (`performance.now()` plus an offset). The record failed integer validation on reload, and the
+   controller, which then treated an unreadable store as empty, created a new order with a new key.
+   Fixes: `ServerClock.now()` returns whole milliseconds (earliest floored, latest ceiled); the
+   controller refuses every new action while any record of the user is unreadable; the test harness
+   uses a fractional monotonic clock, so the bug makes three tests fail. The next live run with the
+   unreadable records was refused, as intended. The two local records were then repaired by hand
+   (`firstSentAt` floored) and the following run only read.
+2. **Order expiry keeps the version** (live, contradicting the contract). The cache would have kept
+   showing `open`. Fixed with `isLaterOrderState`; the simulated server now expires orders the same
+   way, and two tests cover the cache, the intent and the till's polling.
+3. **The in-memory test store shipped in the app bundles** (exported from the package index; Metro does
+   not tree-shake). Moved to `src/testing/` and no longer exported.
+4. **The gate would have told the till something untrue**: the API checks the payer app's version,
+   never the till's. The till no longer shows the gate.
+5. **An unreadable store could leave a half-loaded controller polling** and an unhandled rejection.
+   The provider now disposes it and exposes `recordsUnavailable`.
+6. **The generated `Problem` type requires `detail`**, which the API may omit. `toProblem` fills
+   `null`, replacing an unsound type guard.
+7. **The foundation notice was no longer true** ("only proves the project setup"); reworded in both
+   languages, and the APK rebuilt.
+8. Lint: a now-unnecessary type assertion (TypeScript infers the `every` predicate); a doc comment
+   that named a renamed function.
+
+APK build times on this machine: 2 min 17 s (first build with the new modules), then 54 s and 61 s.
+Disk: 7.0 GB free before the builds, 3.0 GB after three builds, Expo Go and the emulator, 4.2 GB
+after removing about 1.5 GB of regenerated Gradle/CMake output (the generated `android/` project and
+its `debug.keystore` were kept).
+
 ## Manual steps
 
 1. **pnpm on PATH**: `corepack enable pnpm` (undo: `corepack disable pnpm`), or prefix commands with
@@ -123,35 +218,41 @@ pinned Node download and regenerated bundles. The next APK build recreates most 
    `org.gradle.java.home=/Library/Java/JavaVirtualMachines/temurin-11.jdk/Contents/Home`. `pnpm apk:*`
    overrides it; plain `./gradlew`, Android Studio and `expo run:android` still get JDK 11. Change or
    remove the line only if no other project needs it.
-4. **APK 1.0.0**: `pnpm apk:student` (both ABIs for the review build) regenerates `android/` and
-   writes `artifacts/android/mensa-student-1.0.0-armeabi-v7a+arm64-v8a.apk`. It takes a long time
-   and needs about 1.6 GB of build space.
-5. **Android tablet emulator**: install Android Studio → Device Manager → create a tablet device
+4. **Review APK**: `pnpm apk:student` (both ABIs) writes
+   `artifacts/android/mensa-student-1.0.0-armeabi-v7a+arm64-v8a.apk`. Only the arm64 build exists so
+   far. `artifacts/android/mensa-student-0.1.0-arm64-v8a.apk` is obsolete (below `minAppVersion`).
+5. **Order probe**: `ZAHLN_SMOKE_PASSWORD=<seeded password> pnpm api:order-probe`. It reuses its saved
+   intent in `.local/order-probe-intents.json`, so a re-run only reads. Deleting that file makes the
+   next run create a new live order.
+6. **Android tablet emulator**: install Android Studio → Device Manager → create a tablet device
    (e.g. Pixel Tablet) with the already installed API 36.1 arm64 Google Play image.
-6. **iPhone 17 Pro**: Xcode → Settings → Accounts → add your Apple ID (a free personal team works;
+7. **iPhone 17 Pro**: Xcode → Settings → Accounts → add your Apple ID (a free personal team works;
    profiles last 7 days). On the phone, enable Developer Mode (Settings → Privacy & Security). Then
    `cd apps/student && pnpm exec expo run:ios --device` (generates `ios/`, runs CocoaPods, needs
    several GB). If the bundle ID is taken for your team, change `ios.bundleIdentifier` in `app.json`.
-7. **Android phone (if borrowed)**: enable USB debugging, then `adb install -r` the rebuilt APK.
-8. **Disk**: about 8 GB free. Old simulator runtimes and old Gradle versions under `~/.gradle` are
-   candidates to review before any iOS native build or Xcode update.
-9. **Accounts**: the private GitHub repository exists (`omerarslnn/zahln-take-home`); invite the
-   reviewers when ready. A dashboard host (e.g. Vercel, Netlify or Cloudflare Pages) and, optionally,
-   an Expo account for EAS are not set up.
+8. **Android phone (if borrowed)**: enable USB debugging, then `adb install -r` the APK.
+9. **Disk**: 4.2 GB free. The phone emulator's data (`~/.android/avd/Medium_Phone.avd`, 5.4 GB) is
+   the largest reclaimable item (Device Manager → Wipe Data); Expo's caches in `~/.expo` hold 1.2 GB.
+   Both are outside the project and were not touched.
+10. **Accounts**: the private GitHub repository exists (`omerarslnn/zahln-take-home`); invite the
+    reviewers when ready. A dashboard host (e.g. Vercel, Netlify or Cloudflare Pages) and, optionally,
+    an Expo account for EAS are not set up.
 
-## Recommended scope for stage 2: payment foundations
+## Recommended scope for stage 3: the payment interface
 
-1. Handle `GET /config` at start: forced update when `appVersion` is below `minAppVersion`, and
-   "payments paused" when `paymentsEnabled` is false.
-2. Observe and record `qrPayload` from one cashier `POST /orders` (the first deliberate write).
-3. `@mensa/domain`: payment and refund intent models (draft → submitting → unknown → pending →
-   confirmed/declined, refund pending/completed/failed), outcome classification from
-   `TransportResult`, a server clock from `Date`, and `newerOf`-based reconciliation with bounded
-   polling.
-4. Persistence of intents (key + immutable payload) scoped to candidate and user; session manager
-   that re-authenticates on `session_expired` without crossing accounts; runtime validation of the
-   order/payment fields the logic depends on.
-5. Deterministic tests with a fake transport: double tap, lost response after the server saved,
-   replay, stale and out-of-order reads, session expiry mid-intent, app restart with a pending intent.
+1. **Student**: seeded-account picker (sign-in through `SessionCoordinator`); QR scan
+   (`expo-camera`) → `parseOrderQr` → `GET /orders/{id}`; confirmation with the server's amount and
+   local biometric or PIN authorization before `payOrder`; a result screen driven by `paymentDisplay`
+   and polling; history including payments still being checked; payment detail.
+2. **Till**: cashier sign-in; menu from `GET /mensas`; order entry → `createOrder` → QR display;
+   following the order to paid or expired; full and partial refunds with the server's refundable
+   amount and clear refusal messages.
+3. **Recovery UI**: unresolved intents with "checking" states, a retry action inside the replay
+   window, and a deliberate way for a cashier to close an unresolvable refund intent after checking
+   the payment's history (today it blocks further refunds on that payment indefinitely).
+4. **First real payment**: confirm whether settlement grows the payment's `version` (api-notes,
+   observation 7) before relying on polling to show `confirmed`.
+5. A screen-reader pass of the pay flow (TalkBack and VoiceOver), the dual-ABI review APK, the till
+   APK, and an iOS development build.
 
-UI flows (scan, confirm, result, till order/QR/refund, dashboard views) belong to stage 3 and later.
+The dashboard (totals, attention queue, search, CSV export, deployment) follows after that.

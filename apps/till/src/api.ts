@@ -1,4 +1,5 @@
-import { createApiClient, createTransport, parsePublicApiConfig } from '@mensa/api';
+import { createApiClient, createTransport, monotonicNow, parsePublicApiConfig } from '@mensa/api';
+import { ServerClock } from '@mensa/domain';
 import Constants from 'expo-constants';
 
 // EXPO_PUBLIC_* values are inlined into the JS bundle at build time: public, never secrets.
@@ -15,9 +16,20 @@ const apiConfig = parsePublicApiConfig({
  */
 export const appVersion = Constants.expoConfig?.version;
 
+/** Server time learned from every response's Date header; expiry and replay decisions use it. */
+export const serverClock = new ServerClock(monotonicNow);
+
+export const candidateId = apiConfig.ok ? apiConfig.config.candidateId : null;
+
 /** Null when the build is missing its public configuration; the UI then says what is missing. */
 export const apiClient = apiConfig.ok
-  ? createApiClient(createTransport({ ...apiConfig.config, appVersion }))
+  ? createApiClient(
+      createTransport({
+        ...apiConfig.config,
+        appVersion,
+        onServerDate: (sample) => serverClock.observe(sample),
+      }),
+    )
   : null;
 
 const ENV_NAMES = {

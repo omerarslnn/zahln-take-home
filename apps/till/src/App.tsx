@@ -3,6 +3,7 @@ import { I18nProvider } from '@mensa/shared/react';
 import { getLocales } from 'expo-localization';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { PaymentServicesProvider } from './payments/PaymentServices';
 import { TillScreen } from './TillScreen';
 
 // The user's preferred system language. Intl's default locale is not reliable for this: in Expo Go
@@ -14,7 +15,9 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <I18nProvider initialLocale={pickLocale(deviceLanguage)}>
-        <TillScreen />
+        <PaymentServicesProvider>
+          <TillScreen />
+        </PaymentServicesProvider>
         <StatusBar style="dark" />
       </I18nProvider>
     </SafeAreaProvider>

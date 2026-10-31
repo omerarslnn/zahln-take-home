@@ -22,6 +22,7 @@
     "api:generate": "pnpm --filter @mensa/api generate",
     "api:smoke": "pnpm --filter @mensa/api smoke",
     "api:spec-diff": "pnpm --filter @mensa/api spec-diff",
+    "api:order-probe": "pnpm --filter @mensa/domain order-probe",
     "bundle:native": "pnpm --filter @mensa/student --filter @mensa/till bundle",
     "apk:student": "node scripts/build-android-apk.mjs student",
     "apk:till": "node scripts/build-android-apk.mjs till",

@@ -9,6 +9,7 @@ import {
   LanguageSwitch,
   TokenSwatches,
 } from './components/Foundation';
+import { SecureStorageCheck } from './components/SecureStorageCheck';
 
 /**
  * Tablet-first shell. From Tailwind's `md` breakpoint (768 dp, a tablet) the content splits into
@@ -45,6 +46,7 @@ export function TillScreen() {
         </View>
         <View className="gap-4 md:flex-1">
           <ConnectionCheck />
+          <SecureStorageCheck />
         </View>
       </ScrollView>
     </View>

@@ -1,5 +1,5 @@
 import { parseHttpDate } from './http-date';
-import { isProblem } from './problem';
+import { toProblem } from './problem';
 import type { Problem } from './types';
 
 export interface TransportConfig {
@@ -13,8 +13,21 @@ export interface TransportConfig {
   timeoutMs?: number;
   /** Injected in tests; defaults to the platform fetch (browser, React Native or Node). */
   fetchImpl?: typeof fetch;
-  /** Clock for durations; injected in tests. */
+  /**
+   * Monotonic clock in milliseconds for durations and server-time samples. Defaults to
+   * `performance.now()`, which, unlike `Date.now()`, does not jump when the user changes the
+   * device clock. Injected in tests.
+   */
   now?: () => number;
+  /** Receives every valid `Date` header with the local send/receive times (feeds the server clock). */
+  onServerDate?: (sample: ServerDateSample) => void;
+}
+
+/** A server timestamp and the monotonic interval in which the server must have produced it. */
+export interface ServerDateSample {
+  serverDate: Date;
+  sentAt: number;
+  receivedAt: number;
 }
 
 export interface RequestOptions {
@@ -41,14 +54,27 @@ export interface ResponseMeta {
 }
 
 /**
+ * Why a response could not be used: a 2xx body that is not JSON, an error body that is not a Problem
+ * (e.g. a proxy's HTML page), or a 2xx resource that failed validation (set by the API client).
+ */
+export type InvalidResponseReason =
+  'unparsable_body' | 'unexpected_error_body' | 'invalid_resource';
+
+/**
  * What one HTTP attempt produced. The transport reports only what happened on the wire and never
- * retries. Interpreting it is the caller's job: after a POST, `no_response` or a 502/504 problem means
- * the outcome is unknown (the server may have saved the change), not that the request failed.
+ * retries. Interpreting it is the caller's job: after a POST, `no_response`, `invalid_response` or a
+ * 502/504 problem means the outcome is unknown (the server may have saved the change), not a failure.
  */
 export type TransportResult<T> =
   | { kind: 'success'; data: T; meta: ResponseMeta }
   | { kind: 'problem'; problem: Problem; meta: ResponseMeta }
-  | { kind: 'invalid_response'; meta: ResponseMeta }
+  | {
+      kind: 'invalid_response';
+      reason: InvalidResponseReason;
+      /** Field path that failed validation (never the value), for diagnostics. */
+      detail?: string;
+      meta: ResponseMeta;
+    }
   | { kind: 'no_response'; reason: 'timeout' | 'network'; durationMs: number };
 
 export interface Transport {
@@ -57,10 +83,16 @@ export interface Transport {
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 
+const performanceClock = (globalThis as { performance?: { now(): number } }).performance;
+/** Milliseconds from a clock that never jumps with the device time; falls back to `Date.now`. */
+export const monotonicNow: () => number = performanceClock
+  ? () => performanceClock.now()
+  : () => Date.now();
+
 /** Creates the single HTTP entry point shared by the student app, the till, the dashboard and scripts. */
 export function createTransport(config: TransportConfig): Transport {
   const fetchImpl = config.fetchImpl ?? globalThis.fetch.bind(globalThis);
-  const now = config.now ?? Date.now;
+  const now = config.now ?? monotonicNow;
   const baseUrl = config.baseUrl.replace(/\/+$/, '');
 
   return {
@@ -84,6 +116,7 @@ export function createTransport(config: TransportConfig): Transport {
           body: options.body === undefined ? undefined : JSON.stringify(options.body),
           signal: controller.signal,
         });
+        reportServerDate(config, response, startedAt, now());
         // The body is read inside the timeout too: a response can stall after its headers arrive.
         received = { response, text: await response.text() };
       } catch {
@@ -125,6 +158,17 @@ function buildQuery(query: RequestOptions['query']): string {
   return pairs.length > 0 ? `?${pairs.join('&')}` : '';
 }
 
+// The headers have arrived, so the server produced its Date somewhere between sending and now.
+function reportServerDate(
+  config: TransportConfig,
+  response: Response,
+  sentAt: number,
+  receivedAt: number,
+): void {
+  const serverDate = parseHttpDate(response.headers.get('date'));
+  if (serverDate && config.onServerDate) config.onServerDate({ serverDate, sentAt, receivedAt });
+}
+
 function toResult<T>(response: Response, text: string, durationMs: number): TransportResult<T> {
   const meta: ResponseMeta = {
     status: response.status,
@@ -134,14 +178,15 @@ function toResult<T>(response: Response, text: string, durationMs: number): Tran
   };
   const body = parseJson(text);
   if (response.ok) {
-    // Not validated at runtime yet: the shape is trusted from the contract types.
+    // Only JSON-ness is checked here; the API client validates the resource itself.
     return body.ok
       ? { kind: 'success', data: body.value as T, meta }
-      : { kind: 'invalid_response', meta };
+      : { kind: 'invalid_response', reason: 'unparsable_body', meta };
   }
-  return body.ok && isProblem(body.value)
-    ? { kind: 'problem', problem: body.value, meta }
-    : { kind: 'invalid_response', meta };
+  const problem = body.ok ? toProblem(body.value) : null;
+  return problem
+    ? { kind: 'problem', problem, meta }
+    : { kind: 'invalid_response', reason: 'unexpected_error_body', meta };
 }
 
 function parseJson(text: string): { ok: true; value: unknown } | { ok: false } {

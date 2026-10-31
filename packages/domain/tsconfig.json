@@ -1,8 +1,9 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    // Node types only for the *.test.ts files; ESLint forbids Node globals and imports elsewhere.
+    // Node types for the *.test.ts files and the Node-only scripts/; ESLint forbids Node globals
+    // and imports in the rest of src.
     "types": ["node"]
   },
-  "include": ["src"]
+  "include": ["src", "scripts"]
 }

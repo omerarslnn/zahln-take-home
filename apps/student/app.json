@@ -22,6 +22,14 @@
     },
     "experiments": {
       "autolinkingModuleResolution": true
-    }
+    },
+    "plugins": [
+      [
+        "expo-secure-store",
+        {
+          "configureAndroidBackup": true
+        }
+      ]
+    ]
   }
 }

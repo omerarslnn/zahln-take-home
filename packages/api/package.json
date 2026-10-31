@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./decode": "./src/decode.ts"
   },
   "scripts": {
     "generate": "openapi-typescript openapi/openapi.json --output src/generated/openapi.ts",

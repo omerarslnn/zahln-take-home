@@ -9,6 +9,7 @@ import {
   LanguageSwitch,
   TokenSwatches,
 } from '../components/Foundation';
+import { PaymentAvailability } from '../components/PaymentAvailability';
 import type { RootStackParamList } from '../navigation';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
@@ -32,6 +33,7 @@ export function HomeScreen({ navigation }: Props) {
         <Text className="text-base text-ink">{t('foundation.notice')}</Text>
         <Text className="text-base text-ink-muted">{t('student.next')}</Text>
       </Card>
+      <PaymentAvailability />
       <LanguageSwitch />
       <TokenSwatches />
       <FormatPreview />

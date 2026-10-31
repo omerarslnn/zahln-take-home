@@ -26,12 +26,15 @@ supplied file. Never modify `brief/`. Record live-spec differences in `docs/api-
 
 ## Current stage
 
-Stage 1 (foundation) is done; see `docs/progress.md`. **No order, payment or refund mutation exists in
-the code yet.** The invariants below are design constraints. Do not describe any of them as enforced
-unless code and tests in this repository enforce it.
+Stage 2 (payment rules) is done; see `docs/progress.md`. `@mensa/domain` implements intents,
+recovery, sessions, server time, gates and reconciliation, tested against a SIMULATED server
+(`packages/domain/src/testing/`). Both native apps wire it in, but there are no payment screens yet:
+nobody signs in, scans, pays or refunds through the UI.
 
-Not allowed until a later stage explicitly asks for it: payment/order/refund mutations, and any
-automatic offline payment queue or background payment retry.
+Live writes: the only one allowed is `pnpm api:order-probe` (one cashier order per saved intent; a
+re-run reuses the saved key and only reads). It created two orders on 2026-10-31 because of a since
+fixed bug. **No live payment or refund** until a stage explicitly asks for one. Never add an automatic
+offline payment queue or a background payment retry: writes happen only on a user action.
 
 ## Commands
 
@@ -44,6 +47,7 @@ pnpm bundle:native      # expo export for iOS and Android (both apps)
 pnpm api:generate       # regenerate packages/api/src/generated from the contract copy
 pnpm api:smoke          # opt-in live check: GET /config, POST /sessions, GET /mensas, CORS preflights
 pnpm api:spec-diff      # opt-in: compare the live OpenAPI document with the committed copy
+pnpm api:order-probe    # opt-in, WRITES one live cashier order (QR format probe); see README
 pnpm apk:student        # standalone release APK (debug-keystore signed) into artifacts/android/
 ```
 
@@ -64,12 +68,18 @@ mirrored in `.nvmrc` and `engines`). The system `node` on this Mac is 23.11 and 
 - Native apps read config only as literal `process.env.EXPO_PUBLIC_*`; the dashboard uses `VITE_*`.
   Both are public (inlined into bundles). No secrets in any client env.
 
-## Payment invariants (constraints for stages 2+)
+## Payment invariants
+
+Invariants 1–10 are enforced in `@mensa/domain` and `@mensa/api` and covered by deterministic tests
+against the simulated server (mutation-checked; see `docs/progress.md`). No UI or live payment
+exercises them yet, and the UI halves (show the server's amount, pay exactly that, show only
+`confirmed` as paid) arrive with the screens. 11 and 12 are still design constraints.
 
 1. Money is integer cents (EUR). The API resolves prices by the authenticated payer's price group;
    the client never computes a price. It sends back the amount it showed (`amount_mismatch` guards).
-2. The QR identifies the order (`qrPayload`), not an amount. Its encoding is not specified and not yet
-   observed. Observe it from a real `POST /orders` response and document it; never guess a format.
+2. The QR identifies the order (`qrPayload`), not an amount. Observed format:
+   `zahln://pay?order=<orderId>` (`parseOrderQr`, `docs/api-notes.md`). Never fetch a scanned URL;
+   load the order from the configured API origin.
 3. One persisted idempotency key and one immutable request payload per intent (order, payment,
    refund). Every retry of that intent reuses both; a new key means a new intent. The server keeps
    keys for 24 hours per user, so a record older than that must be reconciled by reading, not resent.
@@ -78,7 +88,8 @@ mirrored in `.nvmrc` and `engines`). The system `node` on this Mac is 23.11 and 
    optimistic payment success, ever.
 5. A stale read cannot establish that an ambiguous write never happened.
 6. Reconcile orders and payments by `version` across mutation responses, polling, lists and details;
-   never replace a higher version with a lower one (`newerOf` in `@mensa/domain`).
+   never replace a higher version with a lower one (`newerOf`). Observed exception: order expiry keeps
+   the version, so `isLaterOrderState` accepts `open` → `expired` at an equal version, and nothing else.
 7. Scope caches and recovery records to candidate ID and user ID.
 8. Re-authentication (`401 session_expired`; tokens last at most 5 minutes) must preserve the pending
    intent and must never let it continue under a different account.
@@ -103,6 +114,10 @@ mirrored in `.nvmrc` and `engines`). The system `node` on this Mac is 23.11 and 
   (tokens in `packages/shared/src/tokens/tokens.json`). Minimum touch target 48.
 - Comments explain decisions, not syntax. JSDoc on public functions. Keep functions short enough to
   explain in an interview.
-- Tests: `node:test` via `tsx`, colocated `*.test.ts`, only for behaviour worth protecting.
+- Tests: `node:test` via `tsx`, colocated `*.test.ts`, only for behaviour worth protecting. Test
+  doubles live in `packages/*/src/testing/` and are never exported from a package index (Metro does
+  not tree-shake; they would ship in the app bundles).
+- The student and till apps keep identical copies of `src/payments/*` and `SecureStorageCheck.tsx`;
+  change both.
 - Keep `docs/progress.md` and `docs/api-notes.md` in step with actual results; mark checks as passed,
   failed, blocked or not run.
