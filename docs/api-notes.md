@@ -106,12 +106,21 @@ max-age keeps the extra round trip to roughly one per endpoint every 10 minutes.
    (`pending` → `confirmed`/`declined`) grows the payment's version has not been observed, because no
    live payment has been made. Check it with the first real payment; if it does not, the same kind of
    rule is needed for payments.
-8. **`q` on `GET /payments` is a prefix search** ("Search by payment or order ID prefix"). Recovery
-   therefore checks every hit for the exact `orderId`, the payer and the amount.
-9. **No way to find a write whose response was lost, other than replaying it**: there is no order list
-   for a till and no lookup by idempotency key. A lost `POST /orders` or `POST …/refunds` response is
-   recoverable only by a same-key replay inside the 24-hour retention. Refunds are not matched by
-   amount, reason or time, because two refunds can share all three.
+8. **`q` on `GET /payments` is a prefix search** ("Payment ID, order ID or payer ID, or the start of
+   one"). Any screen that searches must check hits for an exact match.
+9. **No resource carries its idempotency key, and nothing can be looked up by key.** So a read cannot
+   tell which attempt created a payment, order or refund: after a declined attempt, a new attempt
+   for the same order, payer and amount looks identical (a declined payment frees the order for
+   another try), and stale reads or an incomplete search can show the old one. The client therefore
+   settles a lost response only with the intent's own same-key resend inside the 24-hour retention
+   (stage 3 removed the read-based matching of stage 2; see the regression in `progress.md`). A
+   lost `POST /orders` or `POST …/refunds` has no read path at all. Refunds are also never matched
+   by amount, reason or time, because two refunds can share all three.
+10. **One read does settle a lost payment**: an order read as `paid` without the payer's own
+    `paymentId`. The contract says a payer sees their own payment on the order, only one payment can
+    be pending, `paid` is final ("paid", no way back) and "only `confirmed` means the payer has paid".
+    So the payer's attempt did not pay the order. The app says exactly that ("paid by another payer;
+    your attempt did not pay it"), and nothing more.
 
 ## Notes the payment design depends on
 
@@ -144,8 +153,9 @@ max-age keeps the extra round trip to roughly one per endpoint every 10 minutes.
 
 - Declare `X-Candidate-Id` (required), `X-App-Version`, `Idempotent-Replayed` and `Date` in the spec.
 - Grow `Order.version` on expiry, as the contract says, or document `status` as derived from time.
-- Let a client look up a write by its idempotency key (or list a till's recent orders), so a lost
-  response can be recovered after the retention window too.
+- Return the idempotency key on payments, orders and refunds, or let a client look up a write by
+  its key (and list a till's recent orders), so a lost response can be attributed by reading, also
+  after the retention window.
 - Offer an exact `orderId` filter on `GET /payments` next to the prefix search.
 - Give reports a version or ETag and a generated-at timestamp; offer a server-side CSV export.
 - Specify the `qrPayload` format and add a signature or checksum, so a scanner can reject foreign codes.

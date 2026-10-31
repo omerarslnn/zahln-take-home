@@ -164,9 +164,10 @@ export function withRefund(
 }
 
 /**
- * Reads showed the order paid with no payment this payer can see. By the server's rules (one
- * non-declined payment per order, payers see their own paymentId), this payer's attempt was either
- * never applied or declined: not charged. Only a read can conclude this, never a refusal.
+ * A read showed the order `paid` with no payment ID for this payer. By the contract (a payer sees
+ * their own payment on the order, only one payment can be pending, `paid` is final, and only
+ * `confirmed` means paid) this attempt did not pay the order: it was declined or never applied.
+ * Only that read concludes it, never a refusal on a retry.
  */
 export function notChargedPaidByOther(record: PayOrderIntent): PayOrderIntent {
   return { ...record, state: 'rejected', refusal: 'order_paid_by_other' };
@@ -210,7 +211,8 @@ export function isFinal(record: IntentRecord): boolean {
 export function needsReads(record: IntentRecord): boolean {
   switch (record.kind) {
     case 'payOrder':
-      // An unknown payment can be found through the order or the payer's payment list.
+      // A pending payment is read by its ID. An unknown one is read only for the one thing an
+      // order read proves (paid by another payer); its own resend is what settles it.
       return record.state === 'unknown' || record.resource?.status === 'pending';
     case 'createOrder':
       // The till follows its order until it is paid or expired. A lost create response has no

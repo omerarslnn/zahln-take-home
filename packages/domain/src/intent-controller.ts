@@ -426,41 +426,39 @@ export class IntentController {
     }
   }
 
+  /**
+   * What reads can prove about a payment intent. A payment carries no idempotency key, so no read
+   * can tell which attempt created it: after a declined attempt (a declined payment frees the
+   * order for another try) the old and the new attempt match on order, payer and amount alike, and
+   * stale reads or an incomplete search can show the old one. So a read never links a payment to
+   * an intent. Only the intent's own response does: the first one, or the same-key resend
+   * (`retry`) inside the replay window, which the server answers with the original payment.
+   */
   private async observePayment(record: PayOrderIntent): Promise<Observation> {
     const { api } = this.options;
     if (record.resource) {
-      const known = await api.getPayment(record.resource.paymentId);
-      return known.kind === 'success'
+      // Follow the payment our own response named; ignore an answer about anything else.
+      const { paymentId } = record.resource;
+      const known = await api.getPayment(paymentId);
+      return known.kind === 'success' &&
+        known.data.id === paymentId &&
+        this.isOwnPayment(known.data, record)
         ? { type: 'payment', payment: this.cache.putPaymentDetail(known.data) }
         : { type: 'none' };
     }
     if (record.state !== 'unknown') return { type: 'none' };
 
-    // 1. The payer's view of an order names the payment being checked or that paid it, but only
-    //    the payer's own.
-    const orderResult = await api.getOrder(record.payload.orderId);
-    const order = orderResult.kind === 'success' ? this.cache.putOrder(orderResult.data) : null;
-    if (order?.paymentId) {
-      const detail = await api.getPayment(order.paymentId);
-      if (detail.kind === 'success' && this.isOwnPayment(detail.data, record)) {
-        return { type: 'payment', payment: this.cache.putPaymentDetail(detail.data) };
-      }
-    }
-    // 2. The payer's own payments, searched by order ID. `q` is a prefix search, so every hit is
-    //    checked exactly, and a payment already linked to another intent is not taken twice.
-    const list = await api.listPayments({ q: record.payload.orderId, limit: 50 });
-    if (list.kind === 'success') {
-      const ours = list.data.items.filter(
-        (payment) =>
-          this.isOwnPayment(payment, record) && !this.linkedElsewhere(payment.id, record.key),
-      );
-      if (ours.length === 1 && ours[0])
-        return { type: 'payment', payment: this.cache.putPayment(ours[0]) };
-    }
-    // 3. Paid, but by no payment this payer can see: someone else paid it. This payer's attempt
-    //    was never applied or was declined. It is never read as "you paid".
-    if (order?.status === 'paid' && !order.paymentId) return { type: 'not_charged' };
-    return { type: 'none' };
+    // The one conclusion an order read supports. `paid` is final, and a payer always sees their
+    // own payment ID on the order. So a paid order without one was paid by another payer's
+    // payment, and since only one payment can be pending at a time, this attempt was declined or
+    // never applied: it did not pay the order. Stale reads cannot fake this: they show earlier
+    // states, and no earlier state is `paid`.
+    const result = await api.getOrder(record.payload.orderId);
+    if (result.kind !== 'success') return { type: 'none' };
+    const order = this.cache.putOrder(result.data);
+    return order.status === 'paid' && order.paymentId == null
+      ? { type: 'not_charged' }
+      : { type: 'none' };
   }
 
   private async observeOrder(record: CreateOrderIntent): Promise<Observation> {
@@ -507,20 +505,15 @@ export class IntentController {
     return started;
   }
 
+  /**
+   * A sanity check on a payment our own request or ID lookup returned: it must be for this order,
+   * this payer and this amount. It is necessary, never sufficient: an earlier attempt matches too.
+   */
   private isOwnPayment(payment: Payment, record: PayOrderIntent): boolean {
     return (
       payment.orderId === record.payload.orderId &&
       payment.payer.id === this.options.scope.userId &&
       payment.amountCents === record.payload.amountCents
-    );
-  }
-
-  private linkedElsewhere(paymentId: string, key: string): boolean {
-    return this.list().some(
-      (record) =>
-        record.key !== key &&
-        record.kind === 'payOrder' &&
-        record.resource?.paymentId === paymentId,
     );
   }
 

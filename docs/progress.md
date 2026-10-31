@@ -205,6 +205,36 @@ Disk: 7.0 GB free before the builds, 3.0 GB after three builds, Expo Go and the 
 after removing about 1.5 GB of regenerated Gradle/CMake output (the generated `android/` project and
 its `debug.keystore` were kept).
 
+## Stage 3: usable student and till apps (2026-10-31, in progress)
+
+### Checkpoint 1: recovery cannot attribute an earlier attempt to a newer one
+
+**Reproduced first.** Attempt A for an order declines; the payer deliberately starts B (new key,
+same order, payer and amount); B reaches the server but its response is lost; A's record is removed;
+the app restarts with only B on disk. Two new tests then failed on the stage 2 code:
+
+- a stale order read (two versions back, still naming payment A) resolved B as A's **declined**
+  payment;
+- a payment search that listed A but not yet B did the same.
+
+A third new test, with a hostile response naming another payer, showed that a read of a payment the
+intent already knew updated it without checking order, payer and amount (the write path did check).
+
+**Fix.** Reads no longer link any payment to an unknown intent: no resource carries its idempotency
+key, so order, payer and amount cannot distinguish attempts (`observePayment` in
+`intent-controller.ts`). An intent is settled only by its own response or same-key resend, by reads
+of the resource ID that response named (now checked for ID, order, payer and amount), or for
+payments by an order read as `paid` without the payer's own payment ID (the contract-backed
+"another payer paid it"). The order search and `linkedElsewhere` were removed. Four stage 2 tests
+that expected reads to settle a lost payment now expect `checking` until the same-key resend.
+
+**New tests**: the two regressions; the hostile payer on a write and on a read; an unknown payment
+kept across an account switch; an unknown refund that no dismissal, deadline, restart or empty
+history settles, and that keeps blocking another refund. 84/84 tests pass.
+
+**Mutation run** (23 single-point bugs against this code): all killed, including the stage 2
+survivor (removing the payer check), which the hostile fixture now reaches.
+
 ## Manual steps
 
 1. **pnpm on PATH**: `corepack enable pnpm` (undo: `corepack disable pnpm`), or prefix commands with

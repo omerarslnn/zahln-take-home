@@ -23,7 +23,10 @@ export type Fault =
   | { type: 'proxy_html'; applied: boolean }
   | { type: 'malformed_success'; body: string }
   | { type: 'problem'; status: number; code: string }
-  | { type: 'stale' }
+  /** An out-of-date read: `depth` versions back (default 1); a list misses its `depth` newest payments. */
+  | { type: 'stale'; depth?: number }
+  /** A hostile or broken response that names another payer. */
+  | { type: 'foreign_payer' }
   | { type: 'bad_date' };
 
 interface FakeUser {
@@ -200,8 +203,11 @@ export class FakeMensaServer {
     if (fault?.type === 'problem') return this.problem(fault.status, fault.code);
     if (fault && 'applied' in fault && !fault.applied) return this.failure(fault);
 
-    const reply = this.handle(route, ids, headers, body, url, fault?.type === 'stale');
+    const staleDepth = fault?.type === 'stale' ? (fault.depth ?? 1) : 0;
+    const reply = this.handle(route, ids, headers, body, url, staleDepth);
     if (!fault || fault.type === 'stale') return this.json(reply);
+    if (fault.type === 'foreign_payer')
+      return this.json({ ...reply, body: foreignPayer(reply.body) });
     switch (fault.type) {
       case 'lose_response':
       case 'gateway':
@@ -222,7 +228,7 @@ export class FakeMensaServer {
     headers: Headers,
     body: string | null,
     url: URL,
-    stale: boolean,
+    staleDepth: number,
   ): Reply {
     if (headers.get('x-candidate-id') !== CANDIDATE_ID)
       return problemReply(403, 'unknown_candidate');
@@ -238,11 +244,11 @@ export class FakeMensaServer {
       case 'listMensas':
         return { status: 200, body: { items: [] } };
       case 'getOrder':
-        return this.readOrder(user, ids[0] ?? '', stale);
+        return this.readOrder(user, ids[0] ?? '', staleDepth);
       case 'getPayment':
-        return this.readPayment(user, ids[0] ?? '', stale);
+        return this.readPayment(user, ids[0] ?? '', staleDepth);
       case 'listPayments':
-        return this.list(user, url.searchParams.get('q') ?? '');
+        return this.list(user, url.searchParams, staleDepth);
       case 'createOrder':
       case 'createPayment':
       case 'createRefund':
@@ -404,28 +410,29 @@ export class FakeMensaServer {
 
   // ---- reads ---------------------------------------------------------------------------------------
 
-  private readOrder(user: FakeUser, orderId: string, stale: boolean): Reply {
+  private readOrder(user: FakeUser, orderId: string, staleDepth: number): Reply {
     this.expireIfDue(orderId);
     const history = this.orders.get(orderId);
     if (!history) return problemReply(404, 'not_found');
-    const order = stale && history.length > 1 ? (history.at(-2) as OrderState) : latest(history);
+    const order = earlier(history, staleDepth);
     if (user.role === 'cashier' && user.tillId !== order.tillId)
       return problemReply(404, 'not_found');
     return { status: 200, body: this.orderView(order, user) };
   }
 
-  private readPayment(user: FakeUser, paymentId: string, stale: boolean): Reply {
+  private readPayment(user: FakeUser, paymentId: string, staleDepth: number): Reply {
     const history = this.payments.get(paymentId);
     if (!history) return problemReply(404, 'not_found');
-    const payment =
-      stale && history.length > 1 ? (history.at(-2) as PaymentState) : latest(history);
+    const payment = earlier(history, staleDepth);
     if (user.priceGroup && payment.payerId !== user.id) return problemReply(404, 'not_found');
     if (user.role === 'cashier' && user.tillId !== payment.tillId)
       return problemReply(403, 'forbidden');
     return { status: 200, body: this.paymentView(payment, true) };
   }
 
-  private list(user: FakeUser, prefix: string): Reply {
+  /** Newest first, scoped by role, `q` as a prefix; `cursor` is an offset into the list. */
+  private list(user: FakeUser, params: URLSearchParams, staleDepth: number): Reply {
+    const prefix = params.get('q') ?? '';
     const visible = [...this.payments.values()]
       .map(latest)
       .filter((payment) =>
@@ -434,10 +441,15 @@ export class FakeMensaServer {
       .filter((payment) =>
         [payment.id, payment.orderId, payment.payerId].some((value) => value.startsWith(prefix)),
       )
-      .sort((a, b) => b.createdAt - a.createdAt);
+      .sort((a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id))
+      .slice(staleDepth);
+    const offset = Number(params.get('cursor') ?? 0);
+    const limit = Number(params.get('limit') ?? 50);
+    const page = visible.slice(offset, offset + limit);
+    const next = offset + limit < visible.length ? String(offset + limit) : null;
     return {
       status: 200,
-      body: { items: visible.map((payment) => this.paymentView(payment, false)), nextCursor: null },
+      body: { items: page.map((payment) => this.paymentView(payment, false)), nextCursor: next },
     };
   }
 
@@ -519,7 +531,7 @@ export class FakeMensaServer {
         quantity,
         ...(payer ? { unitPriceCents: MENU[itemId]?.[payer] ?? 0 } : { unitPrices: MENU[itemId] }),
       })),
-      qrPayload: `fake-qr:${order.id}`,
+      qrPayload: `zahln://pay?order=${order.id}`, // the format observed on the live API
       ...(payer
         ? {
             priceGroup: payer,
@@ -597,7 +609,10 @@ export class FakeMensaServer {
   }
 
   private failure(
-    fault: Exclude<Fault, { type: 'problem' | 'stale' | 'bad_date' | 'malformed_success' }>,
+    fault: Exclude<
+      Fault,
+      { type: 'problem' | 'stale' | 'bad_date' | 'malformed_success' | 'foreign_payer' }
+    >,
   ): Response {
     if (fault.type === 'lose_response') throw new TypeError('Network request failed');
     if (fault.type === 'gateway')
@@ -627,6 +642,20 @@ function latest<T>(history: T[]): T {
   const last = history.at(-1);
   if (last === undefined) throw new Error('empty history');
   return last;
+}
+
+/** The state `depth` versions before the latest (the oldest one if there are fewer). */
+function earlier<T>(history: T[], depth: number): T {
+  return history[Math.max(0, history.length - 1 - depth)] ?? latest(history);
+}
+
+/** Rewrites every payer in a response body to someone else, as a hostile server might. */
+function foreignPayer(body: unknown): unknown {
+  if (!body || typeof body !== 'object') return body;
+  const record = body as Record<string, unknown>;
+  if ('payer' in record) return { ...record, payer: { id: 'usr_intruder', displayName: 'X' } };
+  // A page of payments; checked second because a payment has an `items` list of its own.
+  return Array.isArray(record.items) ? { ...record, items: record.items.map(foreignPayer) } : body;
 }
 
 function totalFor(order: OrderState, group: PriceGroup): number {

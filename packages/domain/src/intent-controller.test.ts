@@ -90,7 +90,7 @@ describe('payment intents', () => {
     assert.equal(env.server.applied.createPayment, 1);
   });
 
-  it('after a restart, a fresh controller recovers the saved intent by reading, without resending', async () => {
+  it('after a restart, keeps the saved intent unknown until its own same-key resend settles it', async () => {
     const env = new TestEnvironment();
     const first = await env.startApp('student');
     const orderId = env.server.seedOrder(PASTA);
@@ -100,12 +100,33 @@ describe('payment intents', () => {
 
     const restarted = await env.startApp('student');
     assert.equal(restarted.controller.get(lost.key)?.state, 'unknown');
-    await restarted.controller.reconcile(lost.key);
+    await restarted.controller.reconcile(lost.key); // reads only: nothing is sent again
+    assert.equal(restarted.controller.get(lost.key)?.state, 'unknown');
+    assert.equal(env.server.postedWrites('createPayment').length, 1);
 
-    const recovered = payment(restarted.controller.get(lost.key));
+    const recovered = payment(intentOf(await restarted.controller.retry(lost.key)));
     assert.equal(recovered.state, 'applied');
     assert.equal(paymentDisplay(recovered), 'pending');
-    assert.equal(env.server.postedWrites('createPayment').length, 1);
+    const posts = env.server.postedWrites('createPayment');
+    assert.equal(posts[1]?.idempotencyKey, posts[0]?.idempotencyKey);
+    assert.equal(env.server.applied.createPayment, 1);
+  });
+
+  it('keeps an unknown payment recoverable across an account switch', async () => {
+    const env = new TestEnvironment();
+    const student = await env.startApp('student');
+    const orderId = env.server.seedOrder(PASTA);
+    env.server.inject('createPayment', { type: 'lose_response', applied: true });
+    const lost = intentOf(await student.controller.payOrder(orderId, 500));
+    student.controller.dispose();
+
+    const staff = await env.startApp('staff'); // same device, another account
+    assert.deepEqual(staff.controller.list(), []);
+    staff.controller.dispose();
+
+    const back = await env.startApp('student');
+    assert.equal(back.controller.get(lost.key)?.state, 'unknown');
+    assert.equal(payment(intentOf(await back.controller.retry(lost.key))).state, 'applied');
   });
 
   it('never turns an empty 2xx body or a proxy error into success or into a new intent', async () => {
@@ -119,7 +140,9 @@ describe('payment intents', () => {
     assert.notEqual(paymentDisplay(empty), 'confirmed');
     const tapAgain = await app.controller.payOrder(orderId, 500);
     assert.deepEqual([tapAgain.type, intentOf(tapAgain).key], ['existing', empty.key]);
-    await app.controller.reconcile(empty.key);
+    await app.controller.reconcile(empty.key); // a read cannot tie the payment to this attempt
+    assert.equal(paymentDisplay(payment(app.controller.get(empty.key))), 'checking');
+    await app.controller.retry(empty.key); // its own same-key resend can
     assert.equal(paymentDisplay(payment(app.controller.get(empty.key))), 'pending');
 
     const second = env.server.seedOrder(PASTA);
@@ -149,10 +172,13 @@ describe('payment intents', () => {
     assert.deepEqual([afterRefusal?.state, afterRefusal?.refusal], ['unknown', 'unavailable']);
 
     await app.controller.reconcile(lost.key);
+    assert.equal(app.controller.get(lost.key)?.state, 'unknown');
+    await app.controller.retry(lost.key); // the next resend gets the original payment back
     assert.equal(app.controller.get(lost.key)?.state, 'applied');
+    assert.equal(env.server.applied.createPayment, 1);
   });
 
-  it('beyond the key retention window it reconciles by reading and never replays the write', async () => {
+  it('beyond the key retention window it never replays, and reads alone leave the outcome unknown', async () => {
     const env = new TestEnvironment();
     const first = await env.startApp('student');
     const orderId = env.server.seedOrder(PASTA);
@@ -170,8 +196,9 @@ describe('payment intents', () => {
       ['replay_not_allowed', 'retention_may_have_expired'],
     );
 
+    // The server's confirmed payment exists, but no read can show it came from this attempt.
     await later.controller.reconcile(lost.key);
-    assert.equal(paymentDisplay(payment(later.controller.get(lost.key))), 'confirmed');
+    assert.equal(paymentDisplay(payment(later.controller.get(lost.key))), 'checking');
     assert.equal(env.server.postedWrites('createPayment').length, 1);
   });
 
@@ -179,6 +206,9 @@ describe('payment intents', () => {
     const env = new TestEnvironment();
     const app = await env.startApp('student');
     const orderId = env.server.seedOrder(PASTA);
+    const pending = payment(
+      intentOf(await app.controller.payOrder(env.server.seedOrder(PASTA), 500)),
+    );
     env.server.inject('createPayment', { type: 'lose_response', applied: true });
     const lost = intentOf(await app.controller.payOrder(orderId, 500));
 
@@ -189,8 +219,9 @@ describe('payment intents', () => {
       gate: { status: 'blocked', reason: 'payments_paused' },
     });
     assert.equal((await app.controller.retry(lost.key)).type, 'blocked'); // no write while paused
-    await app.controller.reconcile(lost.key); // reads still work
-    assert.equal(app.controller.get(lost.key)?.state, 'applied');
+    env.server.settlePayment(pending.resource?.paymentId ?? '', 'confirmed');
+    await app.controller.reconcile(pending.key); // reads still work
+    assert.equal(paymentDisplay(payment(app.controller.get(pending.key))), 'confirmed');
 
     env.server.config.paymentsEnabled = true;
     env.server.config.minAppVersion = '1.10.0';
@@ -211,25 +242,7 @@ describe('payment intents', () => {
     const refused = intentOf(await app.controller.payOrder(env.server.seedOrder(PASTA), 500));
     assert.deepEqual([refused.state, refused.refusal], ['ready', 'app_version_unsupported']);
     assert.equal(app.gate.state().status, 'blocked');
-    assert.equal(env.server.postedWrites('createPayment').length, 2); // the lost one and the refused one
-  });
-
-  it('checks search hits exactly: a prefix match on another order is not taken as this payment', async () => {
-    const env = new TestEnvironment();
-    const app = await env.startApp('student');
-    const mine = env.server.seedOrder(PASTA, 'ord_7');
-    const other = env.server.seedOrder(PASTA, 'ord_77'); // "ord_7" is a prefix of "ord_77"
-    const paidOther = payment(intentOf(await app.controller.payOrder(other, 500)));
-    env.server.settlePayment(paidOther.resource?.paymentId ?? '', 'confirmed');
-    await app.controller.reconcile(paidOther.key);
-    await app.controller.acknowledge(paidOther.key); // settled and removed, so no longer "linked"
-
-    env.server.inject('createPayment', { type: 'lose_response', applied: false });
-    const lost = intentOf(await app.controller.payOrder(mine, 500));
-    await app.controller.reconcile(lost.key);
-
-    // GET /payments?q=ord_7 returned the ord_77 payment; it must not settle the ord_7 intent.
-    assert.equal(app.controller.get(lost.key)?.state, 'unknown');
+    assert.equal(env.server.postedWrites('createPayment').length, 3); // pending, lost and refused
   });
 
   it('tells a payer whose order was paid by someone else that they were not charged, never that they paid', async () => {
@@ -306,6 +319,90 @@ describe('payment intents', () => {
   });
 });
 
+describe('payment recovery after an earlier declined attempt', () => {
+  /**
+   * Attempt A for order O declines; the payer deliberately starts B (new key, same order, payer and
+   * amount), B reaches the server but its response is lost, A's record is removed, and the app
+   * restarts with only B on disk. A and B now look alike in every read: same order, payer, amount.
+   */
+  async function declinedThenLost(env: TestEnvironment) {
+    const app = await env.startApp('student');
+    const orderId = env.server.seedOrder(PASTA);
+    const a = payment(intentOf(await app.controller.payOrder(orderId, 500)));
+    const paymentA = a.resource?.paymentId ?? '';
+    env.server.settlePayment(paymentA, 'declined');
+    await app.controller.reconcile(a.key);
+    assert.equal(paymentDisplay(payment(app.controller.get(a.key))), 'declined');
+
+    env.server.inject('createPayment', { type: 'lose_response', applied: true });
+    const b = intentOf(await app.controller.payOrder(orderId, 500, { afterFinalKey: a.key }));
+    assert.equal(b.state, 'unknown');
+    assert.equal(app.controller.get(a.key), undefined); // A's record is gone
+    app.controller.dispose();
+
+    const restarted = await env.startApp('student'); // empty cache, only B's record on disk
+    assert.deepEqual(
+      restarted.controller.list().map((record) => record.key),
+      [b.key],
+    );
+    return { restarted, orderId, paymentA, b };
+  }
+
+  it('does not let a stale order read that names A resolve B', async () => {
+    const env = new TestEnvironment();
+    const { restarted, paymentA, b } = await declinedThenLost(env);
+    // Two versions back the order was "paying" with payment A; A itself now reads as declined.
+    env.server.inject('getOrder', { type: 'stale', depth: 2 });
+
+    await restarted.controller.reconcile(b.key);
+    const after = payment(restarted.controller.get(b.key));
+    assert.deepEqual([after.state, after.resource], ['unknown', null]);
+    assert.equal(paymentDisplay(after), 'checking');
+
+    // B's own same-key resend is the evidence: the server replays B, not A.
+    const resent = payment(intentOf(await restarted.controller.retry(b.key)));
+    assert.equal(resent.state, 'applied');
+    assert.notEqual(resent.resource?.paymentId, paymentA);
+    assert.equal(paymentDisplay(resent), 'pending');
+    assert.equal(env.server.applied.createPayment, 2); // A and B, nothing more
+  });
+
+  it('does not let a payment search that returns A but not yet B resolve B', async () => {
+    const env = new TestEnvironment();
+    const { restarted, b } = await declinedThenLost(env);
+    env.server.inject('getOrder', { type: 'stale' }); // "open" again after A, before B
+    env.server.inject('listPayments', { type: 'stale' }); // B not listed yet; A is
+
+    await restarted.controller.reconcile(b.key);
+    assert.equal(paymentDisplay(payment(restarted.controller.get(b.key))), 'checking');
+    assert.equal(restarted.controller.get(b.key)?.resource, null);
+  });
+});
+
+describe('hostile responses', () => {
+  it("never takes a payment that names another payer as this payer's, from a write or a read", async () => {
+    const env = new TestEnvironment();
+    const app = await env.startApp('student');
+    const orderId = env.server.seedOrder(PASTA);
+    env.server.inject('createPayment', { type: 'foreign_payer' });
+
+    // The server applied it, but the 201 names someone else: not proof of our payment.
+    const hostile = payment(intentOf(await app.controller.payOrder(orderId, 500)));
+    assert.deepEqual([hostile.state, hostile.resource], ['unknown', null]);
+    const resent = payment(intentOf(await app.controller.retry(hostile.key)));
+    assert.equal(resent.state, 'applied'); // the replay names the right payer
+    assert.equal(env.server.applied.createPayment, 1);
+
+    // A read of a known payment that names someone else changes nothing.
+    env.server.settlePayment(resent.resource?.paymentId ?? '', 'confirmed');
+    env.server.inject('getPayment', { type: 'foreign_payer' });
+    await app.controller.reconcile(resent.key);
+    assert.equal(paymentDisplay(payment(app.controller.get(resent.key))), 'pending');
+    await app.controller.reconcile(resent.key);
+    assert.equal(paymentDisplay(payment(app.controller.get(resent.key))), 'confirmed');
+  });
+});
+
 describe('refund intents', () => {
   it('counts pending refunds against capacity and never creates a second refund after a lost response', async () => {
     const env = new TestEnvironment();
@@ -343,6 +440,33 @@ describe('refund intents', () => {
     });
     assert.deepEqual(nothingLeft, { type: 'not_allowed', reason: 'exceeds_refundable' });
     assert.equal(env.server.applied.createRefund, 2);
+  });
+});
+
+describe('unresolved refunds', () => {
+  it('stay unresolved and keep blocking another refund: no dismissal, deadline or restart settles them', async () => {
+    const env = new TestEnvironment();
+    const student = await env.startApp('student');
+    const orderId = env.server.seedOrder([{ itemId: 'itm_pasta', quantity: 2 }]); // 1000 cents
+    const paid = payment(intentOf(await student.controller.payOrder(orderId, 1000)));
+    const paymentId = paid.resource?.paymentId ?? '';
+    env.server.settlePayment(paymentId, 'confirmed');
+
+    const till = await env.startApp('cashier');
+    env.server.inject('createRefund', { type: 'lose_response', applied: false });
+    const lost = refund(intentOf(await till.controller.refund(paymentId, 400, null)));
+    assert.equal(lost.state, 'unknown');
+    assert.equal(await till.controller.acknowledge(lost.key), false); // cannot be dismissed
+
+    await env.advance(25 * 60 * 60 * 1000); // past the replay window
+    till.controller.dispose();
+    const restarted = await env.startApp('cashier');
+    assert.equal((await restarted.controller.retry(lost.key)).type, 'replay_not_allowed');
+    await restarted.controller.reconcile(lost.key); // the history shows no refund: proves nothing
+    assert.equal(restarted.controller.get(lost.key)?.state, 'unknown');
+    assert.equal(await restarted.controller.acknowledge(lost.key), false);
+    assert.equal((await restarted.controller.refund(paymentId, 300, null)).type, 'conflict');
+    assert.equal(env.server.postedWrites('createRefund').length, 1);
   });
 });
 

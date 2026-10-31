@@ -145,8 +145,7 @@ stateDiagram-v2
   submitting --> unknown: timeout, no response, 502/504, malformed body, undocumented code
   submitting --> unknown: found after an app restart
   unknown --> submitting: user retry inside 23 h (same key and payload)
-  unknown --> applied: a read finds our resource
-  unknown --> rejected: read: order paid by someone else (payer not charged)
+  unknown --> rejected: read: order paid by another payer (this attempt did not pay it)
   applied --> applied: newer version (payment pending → confirmed/declined, refund pending → completed/failed)
   rejected --> [*]: acknowledged
   applied --> [*]: acknowledged once final
@@ -170,17 +169,32 @@ order countdown turns `pending` or `checking` into `declined`.
 
 ### Recovering an unknown outcome
 
-| Intent           | How the outcome is found                                                                                                                                                                                                                                                                                                               |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Pay an order     | 1. `GET /orders/{id}`: a payer sees only their own `paymentId`; read it and check it. 2. `GET /payments?q=<orderId>`: `q` is a prefix search, so each hit must match the exact order, payer and amount, and must not belong to another intent. 3. Order `paid` with no visible payment: someone else paid; this payer was not charged. |
-| Ring up an order | No read path (there is no order list): only a same-key replay inside the retention window.                                                                                                                                                                                                                                             |
-| Refund           | No read path: refunds are recognised by ID only, because two refunds can share amount, reason and time. Only a same-key replay inside the retention window.                                                                                                                                                                            |
+A payment, order or refund carries no idempotency key, so **no read can tell which attempt created
+it**. After a declined attempt A, the payer may deliberately start B for the same order, payer and
+amount (a declined payment frees the order); a stale order read or an incomplete search can then
+show A, and A matches B on every field. Stage 2 linked such matches; stage 3 removed that, after a
+regression test reproduced B being resolved as A's decline. The rule now:
 
-Replays are allowed while less than 23 hours of **server time** have passed since the first attempt
-(`REPLAY_WINDOW_MS`, one hour inside the documented 24-hour key retention). Beyond that, or while
-server time is unknown, the intent is only read. If reads cannot settle it, it stays unknown and is
-shown as such: the client relies on the server's guarantees (idempotent replay inside the
-retention, one non-declined payment per order, payers see their own payment ID) and states that.
+| Evidence                                                                               | Settles the intent?                                        |
+| -------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| The intent's own response (first send, or a same-key resend inside the window)         | yes: the resource ID is then linked to this intent         |
+| A read of the resource ID that response named (checked: same ID, order, payer, amount) | yes: newer versions of that resource                       |
+| Order read as `paid` without the payer's own payment ID                                | yes, for payments only: this attempt did not pay the order |
+| Matching order, payer and amount in an order read or a payment search                  | no                                                         |
+| A refusal of a resend, a timeout, the polling budget, the 23-hour deadline, dismissal  | no                                                         |
+
+The `paid` conclusion holds by the contract: a payer always sees their own payment on the order,
+only one payment can be pending, `paid` is final, and only `confirmed` means paid. So the attempt was
+declined or never applied. Stale reads cannot fake it, because no earlier state is `paid`.
+
+Everything else stays **unknown** and is shown as such, with the explicit same-key resend as the way
+to settle it while less than 23 hours of **server time** have passed since the first attempt
+(`REPLAY_WINDOW_MS`, one hour inside the documented 24-hour key retention). A resend may create the
+payment if the first attempt never arrived, so it needs the same local authorization as paying.
+Beyond the window, or while server time is unknown, nothing is resent; an unknown payment then stays
+unknown, and the history shows the payments the server has recorded. Orders and refunds have no
+read path at all (no order list, refunds are recognised by ID only), so the resend is their only
+recovery. An unknown refund keeps blocking another refund on the same payment; nothing dismisses it.
 
 ### Versions and details
 

@@ -141,7 +141,10 @@ different peer set, crashes at runtime. Do not import it from the dashboard.
   monotonic clock; a test changes the device clock and nothing moves.
 - _Why refuse everything when one saved record is unreadable?_ It could be an unresolved intent for the
   same action; that is how the second live order happened (`docs/progress.md`, stage 2, problem 1).
-- _Why does `GET /payments?q=` need exact checks?_ `q` is a prefix search: `ord_7` also finds `ord_77`.
+- _Why can a lost payment not be recovered by reading the payment list?_ No payment carries its
+  idempotency key. After a declined attempt, a new attempt for the same order, payer and amount
+  looks identical, and a stale read can show the old one. Only the same-key resend proves which
+  payment is ours (`observePayment`; regression tests in `intent-controller.test.ts`).
 - _Why does the till not show the payment gate?_ The API checks the payer app's version, not the till's.
 - _Why is order expiry accepted at an equal version?_ Observed live: expiry does not grow `version`
   (`docs/api-notes.md`, observation 7). Nothing else is accepted at an equal version.
