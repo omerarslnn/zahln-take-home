@@ -33,6 +33,13 @@ import { useTill } from '../useTill';
 type Props = NativeStackScreenProps<TillStackParamList, 'Checkout'>;
 
 /**
+ * Keeps a column one group for screen readers. Android lifts the contents of plain containers into
+ * one list sorted by screen position, so side by side the order panel's controls fell between the
+ * menu rows. iOS already groups the children of every React Native view for VoiceOver.
+ */
+const SCREEN_READER_GROUP = { collapsable: false, importantForAccessibility: 'yes' } as const;
+
+/**
  * Ring up an order, show its QR, and follow it until the server says paid or expired. The checkout
  * (the order intent) is separate from the create request: an order that exists is still waiting
  * for its payer, so the menu comes back only after `paid` or `expired` and an explicit "Next
@@ -142,8 +149,14 @@ export function CheckoutScreen({ navigation }: Props) {
       {message ? <Notice tone="warning" title={t(message)} /> : null}
 
       <View className={wide ? 'flex-row items-start gap-4' : 'gap-4'}>
-        {menu ? <View className={wide ? 'flex-1' : ''}>{menu}</View> : null}
-        <View className={wide ? 'flex-1' : ''}>{side}</View>
+        {menu ? (
+          <View className={wide ? 'flex-1' : ''} {...SCREEN_READER_GROUP}>
+            {menu}
+          </View>
+        ) : null}
+        <View className={wide ? 'flex-1' : ''} {...SCREEN_READER_GROUP}>
+          {side}
+        </View>
       </View>
 
       <LanguageSwitch />
