@@ -345,17 +345,93 @@ screenshots were used instead. The density check above was undone with `wm densi
 Disk: 88 GiB free on the home volume at the end of stage 3 (`df -h /`, 2026-11-01); nothing was
 removed in this stage.
 
+## Stage 4: finance dashboard and submission documentation (2026-11-01)
+
+### What was built
+
+- **Finance rules** (`@mensa/domain/finance`, a separate entry point the native apps never import):
+  a read-only API bound to one session with bounded retries for transient read failures
+  (`createFinanceApi`); the daily report store (`DailyReportStore`); the cursor-chain export
+  (`collectPayments`); the CSV writer (`paymentsToCsv`).
+- **Berlin calendar days** (`@mensa/shared`): `berlinDayStart`, `berlinDayRange`, `berlinDayBound`,
+  `formatCalendarDay`, `formatBerlinTime`.
+- **Dashboard** (`apps/dashboard`): public-demo sign-in of the seeded `finance` account, daily totals
+  per mensa and till, payments that need attention, filtered transactions with cursor paging, payment
+  detail with refunds and full history, complete CSV export, diagnostics; German and English; hash
+  routes; build-time validation of `VITE_*`.
+- **Native follow-ups**: one announcement path for VoiceOver and TalkBack, only on the focused screen
+  (`useAnnouncement`); announcements added for payment status on detail screens, scan problems, an
+  invalid typed code and payments being blocked; the result screen no longer moves focus and
+  announces the same words. Both apps raised to build 3.
+- **Docs**: [design.md](design.md) (new), README, review guide walkthroughs, corrected manual tests.
+
+### Verification
+
+| Check                                                            | Kind           | Result         | Evidence / notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ---------------------------------------------------------------- | -------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm check`                                                     | source/build   | passed         | 153 tests in 46 suites, including the dashboard's own tests (the root test command now runs `apps/dashboard/src/**/*.test.ts`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| Commits checked in isolation                                     | source/build   | passed         | `pnpm check` on `2d139a5` alone (135 tests, the earlier dashboard still builds) and on `0f503cf` alone (152 tests).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Mutation checks (finance)                                        | mutation       | 15 caught      | Berlin range end and host zone, filter end day and till reset, late and wrong-day reports, a failed refresh keeping its copy, retry bound and final refusals, repeated cursor, version merge, empty page, formula and line-break quoting, refund failure not shown as a declined payment. Two survived at first and showed test gaps, now fixed (problems 5 and 6).                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `pnpm bundle:native`                                             | bundle         | passed         | iOS and Android, both apps, after the native change; the export and CSV code is absent from the Android bundles (checked by string).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Dashboard production build                                       | build          | passed         | 314 kB JS (93 kB gzip); a build without `VITE_SEEDED_PASSWORD` stops with a message (checked).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| Live browser check, local build (`pnpm dashboard:browser-check`) | live + browser | passed (36/36) | Headless Chrome 156, fresh profile, `http://localhost:4173`: sign-in; no token in storage; report rows and figures equal the API response for 25 Oct (net −€2.70) and 23 Oct; net = gross − refunds at every level; today's Berlin date by server time; attention list equals `needsAttention=true` (9); paging 2 × 50; four filter combinations equal the API; mensa change clears the till; reversed range refused; filtered CSV (229 rows) and full CSV (5,582 payments, 28 pages) equal independent traversals; cancel and filter change save no file; detail with 2 refunds and 6 events; readable 404; German with `lang="de"`; no sideways scroll at 390 px, cards on a phone; reload asks to sign in and reopens the deep link; sign-out; no CORS block; preflights allow `X-Candidate-Id` and `Authorization`; no page errors. |
+| Session after idle (`--idle`)                                    | live + browser | passed (37/37) | After 6.5 idle minutes, "Refresh" sent `GET /reports/daily-totals` → `401`, then `POST /sessions` → `201`, then the same `GET` → `200`, and the report showed.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| Report against payment lists                                     | live           | passed         | 23 Oct: the report's 223 confirmed payments and €811.60 equal the confirmed payments of the Berlin-day range `2026-10-23T00:00:00+02:00` to `2026-10-24T00:00:00+02:00`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| Release APKs from `1b75e2b`                                      | build          | passed         | Four APKs, version 1.0.0 (3); table below.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| Build 3 on the emulator (smoke)                                  | runtime        | passed         | Installed over build 2 with its data. Student: sign-in, Home with the gate card, history, payment detail (refunds, history), scan screen with the camera denied, a mistyped code ("This order code is not valid."), an unknown order ("Order not found"). Till: sign-in, payments, payment detail. No crash in the crash log. Announcements are not audible in this run.                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| Deployed dashboard (HTTPS origin, CORS from it, incognito, CSV)  | deployed       | **not run**    | No host chosen yet; steps in the README. Run `pnpm dashboard:browser-check -- --url <deployed URL>` after deploying.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Physical devices, fingerprint, Face ID, TalkBack, VoiceOver      | runtime        | **not run**    | See [manual-tests.md](manual-tests.md). The emulator accessibility tree and bundle success are not screen-reader passes.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+
+| APK (artifacts/android/)                                  | Version (code) | ABI                    | SHA-256                                                            |
+| --------------------------------------------------------- | -------------- | ---------------------- | ------------------------------------------------------------------ |
+| `mensa-student-1.0.0-3-arm64-v8a-1b75e2b.apk`             | 1.0.0 (3)      | arm64-v8a              | `7cae41ee0fd1dfd51b654968481ca6c346ba862ceb8aeacad9f945ef3ebcc5eb` |
+| `mensa-student-1.0.0-3-armeabi-v7a+arm64-v8a-1b75e2b.apk` | 1.0.0 (3)      | armeabi-v7a, arm64-v8a | `a0ef8e37338949d2587f619c2f9910cb5b2597a9966c8a5b6e710de8a6ca55d5` |
+| `mensa-till-1.0.0-3-arm64-v8a-1b75e2b.apk`                | 1.0.0 (3)      | arm64-v8a              | `9c04e3b7c273fea0063a196e3fa676483cbc8078e89b02aa312ac23d50098625` |
+| `mensa-till-1.0.0-3-armeabi-v7a+arm64-v8a-1b75e2b.apk`    | 1.0.0 (3)      | armeabi-v7a, arm64-v8a | `231f17d736aef0272e17689bfa1b265258abeea97b2ec76b3ce253d8d703c235` |
+
+All four: minSdk 24, targetSdk 36, the same signing certificate as every earlier build
+(`fac61745…3b9c`, the React Native template debug key), the same permissions as build 2, so they
+install over earlier builds with `adb install -r` and keep their saved data. Built with
+`pnpm apk:*` from a clean tree at `1b75e2b`. The build-2 files (`8a8c581`, `a8bf5aa`) are still in
+`artifacts/android/`.
+
+### Problems found by verification, and fixes
+
+1. **Stage 3 said iOS could not announce payment-status changes** because it has no live regions.
+   Wrong: `useAnnouncement` already used `announceForAccessibility`, which VoiceOver hears. The audit
+   found the real gaps instead: announcements were not tied to the focused screen; a message that
+   disappeared and came back was not announced again; the result screen moved focus to its heading
+   and announced the same title; detail screens, scan problems and a blocked gate relied on Android
+   live regions or nothing. Fixed in `1b75e2b`; VoiceOver itself is still unverified.
+2. **Manual test N1 overstated what airplane mode shows.** Airplane mode before "Pay" can only show
+   the offline path: the gate or the server-time check may stop the payment before any request.
+   The manual tests now separate offline, unknown, pending and lost-response cases, and the
+   process-kill test needs a payment that is really saved as unresolved.
+3. **A render read the clock.** The attention list's age column called `Date.now()` during render;
+   the React lint rule caught it. Server time now comes from a small interval hook (`useServerNow`).
+4. **Browser-check harness**: table cells with visually hidden context ("Kasse 1 (Mensa am Campus)")
+   arrive with a line break, and the API echoes only the headers a preflight asked for; headless
+   Chrome may leave a stray `downloads.html.crdownload`. The check now normalises cell text, judges
+   preflights per request type, and counts only export files.
+5. **The "any host time zone" test proved nothing** (found by a mutation that read offsets in the
+   host zone and survived). It changed `TZ` inside the test process, but the formatter is created
+   when the module loads, in this Mac's own Berlin zone. The test now runs the functions in child
+   processes with `TZ` set to Los Angeles, Tokyo, Kiritimati and UTC.
+6. **CSV quoting of a value with only a line break was untested** (a mutation survived): the test
+   value also had a comma and a quote. A value with only a CRLF is now tested.
+
 ## Manual steps
 
 1. **pnpm on PATH**: `corepack enable pnpm` (undo: `corepack disable pnpm`), or prefix commands with
    `corepack`.
 2. **Seeded password**: put the password from the OpenAPI description's "Seeded logins" table into
-   `EXPO_PUBLIC_SEEDED_PASSWORD` in `apps/student/.env` and `apps/till/.env` (git-ignored) before
-   building or starting Metro. It is public mock data, inlined into the apps.
+   `EXPO_PUBLIC_SEEDED_PASSWORD` in `apps/student/.env` and `apps/till/.env`, and into
+   `VITE_SEEDED_PASSWORD` in `apps/dashboard/.env` (all git-ignored), before building or starting
+   Metro. It is public mock data, inlined into the apps and the dashboard.
 3. **Pixel XL (student)**: enable USB debugging; `adb devices -l`;
    `adb shell getprop ro.product.cpu.abilist` (expect `arm64-v8a,…`); then
-   `adb -s <serial> install -r artifacts/android/mensa-student-1.0.0-2-armeabi-v7a+arm64-v8a-8a8c581.apk`
-   (or the arm64 file). It replaces the stage 2 build in place and keeps its data. Set a PIN and enrol
+   `adb -s <serial> install -r artifacts/android/mensa-student-1.0.0-3-armeabi-v7a+arm64-v8a-1b75e2b.apk`
+   (or the arm64 file). It replaces an earlier build in place and keeps its data. Set a PIN and enrol
    a fingerprint, then follow [manual-tests.md](manual-tests.md).
 4. **iPad (till) in Expo Go**: install Expo Go from the App Store (it still supports SDK 54; Expo:
    "Expo Go on the Apple App Store stops at SDK 54"). `pnpm till` on the Mac, same network, scan the
@@ -367,16 +443,17 @@ pnpm exec expo run:ios --device` (generates `ios/`, runs CocoaPods; several GB).
    is taken for your team, change `ios.bundleIdentifier` in `app.json`.
 6. **Gradle JDK pin**: `~/.gradle/gradle.properties` pins JDK 11 globally; `pnpm apk:*` passes JDK 17
    per build and leaves the file alone.
-7. **Accounts**: invite the reviewers to the private repository when ready. A dashboard host and,
-   optionally, an Expo account for EAS are not set up.
+7. **Dashboard host**: choose a hosting account (Cloudflare Pages recommended, or Netlify) and
+   deploy with the README's steps; then run `pnpm dashboard:browser-check -- --url <URL>` and the
+   dashboard rows of [manual-tests.md](manual-tests.md).
+8. **Accounts**: invite the reviewers to the private repository when ready. An Expo account for EAS
+   is not set up (not needed).
 
-## Recommended scope for stage 4: finance dashboard and delivery
+## Remaining for stage 5: submission
 
-1. **Dashboard**: daily totals per mensa and per till (Europe/Berlin days, "last fetched at", not "as
-   of"), payments that need attention, search with the full history of a payment, CSV export that
-   follows every page of the selected filter.
-2. **Deployment** of the dashboard to a public URL, with a CORS check from the deployed origin.
-3. **Submission**: the design document (architecture, payment states on phone and till, releases for
-   an app that cannot be hotfixed, device security and data protection, technology choices, API
-   changes), the README's run instructions and test logins, and the device test results from
-   [manual-tests.md](manual-tests.md).
+1. Deploy the dashboard (one hosting account choice) and record the verified URL, its source commit
+   and the browser check from that origin.
+2. Run the device tests in [manual-tests.md](manual-tests.md) (Pixel, iPad, iPhone, screen readers)
+   and record each as passed, failed or not run.
+3. Final read-through of the README and [design.md](design.md); invite the reviewers; rehearse the
+   review with [review-guide.md](review-guide.md).

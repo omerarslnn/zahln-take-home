@@ -67,6 +67,33 @@ so the tests catch it (see [progress.md](progress.md)).
   cashier had been idle for about 7 minutes; the session coordinator now logs in again on either code
   (a 401 means the server did nothing, so the repeat is safe).
 
+## Stage 4 observations: finance reads (2026-11-01, read-only)
+
+- **Reports add up.** For every day checked, `netCents = grossCents − refundedCents` overall, per
+  mensa and per till; the overall totals equal the sum of the mensas, and each mensa the sum of its
+  tills.
+- **A cross-day refund makes a negative net**: 25 October 2026 (Sunday) has no payments, €2.70 of
+  refunds completed and a net of −€2.70.
+- **Report and list agree on Berlin days**: 23 October 2026 reports 223 confirmed payments and
+  €811.60; the confirmed payments listed between `2026-10-23T00:00:00+02:00` and
+  `2026-10-24T00:00:00+02:00` are the same 223 and €811.60.
+- **`from`/`to` need an offset**: `2026-10-25T00:00:00+02:00` and `…Z` work; a date only or a time
+  without offset answers `400 invalid_request`. Encoded `+` arrives intact.
+- **`q`** matches the start of a payment, order or payer ID, case-insensitively (`pay_76` and
+  `PAY_76` both give 23); names do not match (`Test` gives 0).
+- **Filters combine with AND**: a mensa with another mensa's till gives an empty page; an unknown till
+  gives an empty page (`200`), not an error.
+- **Paging**: `limit` above 200 and an unknown `cursor` answer `400 invalid_request`. All seeded and
+  live payments: 5,582 in 28 pages of 200 (cursors are opaque, 52 characters), newest first, no
+  duplicates across pages.
+- **Needs attention**: 9 payments, reasons `pending_too_long` (4), `refund_pending_too_long` (2),
+  `refund_failed` (3); statuses pending and confirmed only. One flagged payment
+  (`pay_a187fa060754b166`, `refund_failed`) shows `refundableAmountCents: 0` with nothing refunded:
+  the dashboard shows the server's numbers as they are.
+- **CORS from a browser** (headless Chrome at `http://localhost:4173`): every preflight allowed
+  `X-Candidate-Id`, the authenticated ones `Authorization` too, with `Access-Control-Allow-Origin: *`;
+  no request was blocked. The deployed origin is still to be checked.
+
 ## Observed formats (2026-10-31)
 
 - **QR payload**: `zahln://pay?order=<orderId>`. Seen on both probe orders: the order ID occurs once
@@ -181,7 +208,9 @@ max-age keeps the extra round trip to roughly one per endpoint every 10 minutes.
   its key (and list a till's recent orders), so a lost response can be attributed by reading, also
   after the retention window.
 - Offer an exact `orderId` filter on `GET /payments` next to the prefix search.
-- Give reports a version or ETag and a generated-at timestamp; offer a server-side CSV export.
+- Give reports a version or ETag and a generated-at timestamp; offer a server-side CSV export or a
+  snapshot cursor, so a multi-page export is consistent; return a total count with lists.
+- Let finance acknowledge or assign a payment that needs attention.
 - Specify the `qrPayload` format and add a signature or checksum, so a scanner can reject foreign codes.
 - Answer every request with an ended session with `401 session_expired`, as documented.
 - Add refresh tokens and a request ID header; make step-up payment authorization server-verifiable.

@@ -357,6 +357,36 @@ the student app. The till therefore draws its QR without SVG, and `pnpm check` r
 nativewind exists twice. Separately, NativeWind did not apply classes to `KeyboardAvoidingView` even
 with one copy, so the screen wrapper (`components/ui.tsx`) gives it a plain style.
 
+## The finance dashboard (stage 4)
+
+```
+#/report?day=…  ──▶ ReportPage ──▶ useDailyReport ──▶ DailyReportStore ──▶ FinanceApi.getDailyTotals
+#/attention     ──▶ AttentionPage ┐
+#/transactions? ──▶ TransactionsPage ┴▶ usePaymentList ──▶ PaymentHistory (domain) ──▶ FinanceApi.listPayments
+                    └▶ useExport ──▶ collectPayments ──▶ paymentsToCsv ──▶ download
+#/payments/:id  ──▶ PaymentPage ──▶ usePaymentDetail ──▶ ResourceCache.putPaymentDetail ──▶ FinanceApi.getPayment
+```
+
+- **Session** (`apps/dashboard/src/finance/session.tsx`): the `SessionCoordinator` holds the token and
+  the public demo password in memory; a sign-in creates one set of services (read-only
+  `FinanceApi`, a `ResourceCache`, its revision counter) for that candidate and user, and a sign-out
+  drops them. A response from an earlier session reports "account changed" and is never shown.
+- **Reads only** (`@mensa/domain/finance`): `FinanceApi` has no write methods. Each read runs
+  through the session (re-login on `401`) and is repeated at most three times when the failure is
+  transient (`503`, `502`, `504`, no answer, an unreadable body). Refusals are final.
+- **Reports** (`DailyReportStore`): the response itself is the data. Answers for a day that is no
+  longer selected are dropped; a report for another `date` is refused; a failed refresh keeps the
+  earlier copy with its own "last fetched" time; a failure with no copy shows no numbers.
+- **Lists** reuse the payer app's `PaymentHistory`: one cursor chain per filter, late pages of an
+  older filter dropped, each item through the version-safe cache. The count on screen is what is
+  loaded so far.
+- **Filters** (`apps/dashboard/src/finance/filters.ts`): only active filters are serialised, to the
+  address and to the query. Berlin days become instants with offset (`berlinDayBound`): the first
+  day's midnight inclusive, the midnight after the last day exclusive.
+- **Export** (`collectPayments`, `paymentsToCsv`): see the walkthrough in the review guide.
+- **Routing**: hash routes (`#/…`), so any static host serves deep links without rewrite rules;
+  focus moves to the page heading when the page changes.
+
 ## Configuration
 
 Each app reads two public values at build time: the API origin and the candidate ID. Expo inlines
@@ -385,7 +415,15 @@ Minimum touch target: 48 dp/px (`min-h-touch`), measured as 126 px = 48 dp on th
 The language switch is a radio group (Android reports `RadioButton` with the checked state). Results
 are announced: an Android live region, an explicit VoiceOver announcement on iOS, and `aria-live` on
 the web. The payment gate card is a polite live region, so on Android a change (for example payments
-paused) is announced; iOS has no live regions, and the gate card does not announce changes there yet.
+paused) is announced. Announcements go through one hook, `useAnnouncement`
+(`AccessibilityInfo.announceForAccessibility`), which VoiceOver and TalkBack both speak; a message
+spoken there is not also put in an Android live region, so nothing is said twice. It speaks only
+while its screen is focused, once per change: a payment's outcome, its status on a detail screen,
+an order's state on the till, a refund's state, a scan problem, an invalid typed code and payments
+being blocked. The result screen moves focus to its heading once and announces later changes only.
+On the web, status lines use `role="status"` and failures `role="alert"`; tables have captions,
+header cells with scope, and scroll in a named, focusable region on narrow screens, where payment
+lists become cards.
 Android leaves plain containers out of the accessibility tree and orders their contents by screen
 position, which mixed the till's two side-by-side columns; each column is therefore kept as a group
 (`collapsable={false}`, `importantForAccessibility="yes"`). React Native already groups every view's

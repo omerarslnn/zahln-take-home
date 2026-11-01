@@ -3,25 +3,26 @@
 One mensa payment flow across three surfaces (student app, till and the Studierendenwerk
 dashboard) in one TypeScript monorepo, built against the supplied mock API.
 
-> **Status: stage 3 of 5, usable student and till apps.** A payer signs in with a seeded test account,
-> scans the till's QR code (or types the order code), confirms with fingerprint, face or device PIN and
-> sees the server's result; history shows every payment, including those still being checked. The till
-> rings up orders, shows the QR, follows the order to paid or expired and refunds in full or in part.
-> Verified live on an Android emulator with release builds (one payment, two refunds); **physical
-> devices, fingerprint, Face ID and screen readers are not tested yet** (see
-> [docs/manual-tests.md](docs/manual-tests.md)). The finance dashboard is stage 4. Records:
+> **Status: stage 4 of 5: all three surfaces are built.** The student app pays a till order after a
+> local fingerprint, face or PIN check and shows only the server's result; the till rings up orders,
+> shows the QR and refunds; the finance dashboard shows Berlin daily totals per mensa and till,
+> payments that need attention, filtered payments with full history, and exports every matching
+> payment as CSV. Verified: unit and simulated-server tests, live API runs on an Android emulator,
+> and a headless-browser run of the dashboard against the live API. **Not yet verified**: physical
+> devices, fingerprint, Face ID, screen readers, and the public dashboard URL (a hosting account is
+> still to be chosen). Design: [docs/design.md](docs/design.md). Records:
 > [docs/progress.md](docs/progress.md).
 
 ## What exists today
 
-| Part                   | Implemented                                                                                                                                                                                                                                                              | Shell only / not yet                              |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------- |
-| `apps/student` (Expo)  | Seeded sign-in, QR scan or typed code, review with the server's amount, local authorization (biometric or device PIN), truthful result with safe resend, paginated history with unresolved actions, payment detail with refunds and history, DE/EN, screen-reader labels | Device verification (see manual tests)            |
-| `apps/till` (Expo)     | Seeded cashier sign-in, menu with per-group prices, basket, order with QR and countdown, follows paid/expired across restarts, payer's amount when paid, payment list and search, full and partial refunds, DE/EN, tablet layout                                         | Device verification                               |
-| `apps/dashboard` (web) | DE/EN switch (also sets `<html lang>`), shared tokens and formatting, in-browser `GET /config` check that proves CORS and `Date` header exposure                                                                                                                         | Daily totals, attention queue, search, CSV export |
-| `packages/api`         | Types generated from the contract, transport (timeouts, headers, Problem parsing, server `Date`, replay flag), typed client for all ten operations with runtime validation, live smoke check                                                                             | n/a                                               |
-| `packages/domain`      | Intents and their controller, write classification, session coordinator, server clock, payment gate, version reconciliation, bounded polling, QR and code parsing, authorization binding, scan lock, history paging, basket rules                                        | n/a                                               |
-| `packages/shared`      | DE/EN catalogues, euro-cent and Europe/Berlin formatting, design tokens + Tailwind preset, React i18n bindings                                                                                                                                                           | n/a                                               |
+| Part                   | Implemented                                                                                                                                                                                                                                                                                                                     | Shell only / not yet                   |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| `apps/student` (Expo)  | Seeded sign-in, QR scan or typed code, review with the server's amount, local authorization (biometric or device PIN), truthful result with safe resend, paginated history with unresolved actions, payment detail with refunds and history, DE/EN, screen-reader labels                                                        | Device verification (see manual tests) |
+| `apps/till` (Expo)     | Seeded cashier sign-in, menu with per-group prices, basket, order with QR and countdown, follows paid/expired across restarts, payer's amount when paid, payment list and search, full and partial refunds, DE/EN, tablet layout                                                                                                | Device verification                    |
+| `apps/dashboard` (web) | Finance sign-in (public demo account), Berlin daily totals per mensa and till with "last fetched" and failed-refresh states, payments that need attention, filtered cursor-paged payments, payment detail with refunds and history, complete CSV export, DE/EN, diagnostics                                                     | Public deployment (host to be chosen)  |
+| `packages/api`         | Types generated from the contract, transport (timeouts, headers, Problem parsing, server `Date`, replay flag), typed client for all ten operations with runtime validation, live smoke check                                                                                                                                    | n/a                                    |
+| `packages/domain`      | Intents and their controller, write classification, session coordinator, server clock, payment gate, version reconciliation, bounded polling, QR and code parsing, authorization binding, scan lock, history paging, basket rules; `/finance`: read-only API with bounded retries, daily report store, cursor-chain export, CSV | n/a                                    |
+| `packages/shared`      | DE/EN catalogues, euro-cent and Europe/Berlin formatting, Berlin calendar-day ranges across clock changes, design tokens + Tailwind preset, React i18n bindings                                                                                                                                                                 | n/a                                    |
 
 ## Prerequisites
 
@@ -42,7 +43,7 @@ Verified on this setup (see [docs/progress.md](docs/progress.md) for exact resul
 ```sh
 corepack enable pnpm   # once per machine: puts the pinned pnpm on PATH (undo: corepack disable pnpm)
 pnpm install           # first run also downloads the pinned Node.js 24.22.2 for project scripts
-pnpm env:init          # copies each .env.example to .env (never overwrites); then set EXPO_PUBLIC_SEEDED_PASSWORD
+pnpm env:init          # copies each .env.example to .env (never overwrites); then set the seeded password (below)
 pnpm toolchain         # shows the Node.js and pnpm versions that actually run the scripts
 ```
 
@@ -50,18 +51,33 @@ Without `corepack enable`, prefix commands with `corepack`, e.g. `corepack pnpm 
 tools through `pnpm` (scripts, `pnpm exec`, `pnpm node`); calling `./node_modules/.bin/…` directly
 uses the system `node` instead of the pinned version.
 
+Then put the mock's published test password into `EXPO_PUBLIC_SEEDED_PASSWORD` (`apps/student/.env`,
+`apps/till/.env`) and `VITE_SEEDED_PASSWORD` (`apps/dashboard/.env`). It is public demo data that the
+builds inline; `pnpm dashboard:build` stops with a message while it is missing.
+
+### Test logins (public demo accounts of the mock API)
+
+All passwords are the API description's published `test1234`.
+
+| Account                                                                   | Role    | Where                                                        |
+| ------------------------------------------------------------------------- | ------- | ------------------------------------------------------------ |
+| `student`, `staff`, `guest`                                               | payer   | Student app (each pays a different price for the same order) |
+| `cashier-campus-1` … `-3`, `cashier-nord-1`, `-2`, `cashier-bibliothek-1` | cashier | Till                                                         |
+| `finance`                                                                 | finance | Dashboard (signs in with one button)                         |
+
 ## Run
 
-| Command                               | What                                          | Port |
-| ------------------------------------- | --------------------------------------------- | ---- |
-| `pnpm student`                        | Metro for the student app (press `a` / `i`)   | 8081 |
-| `pnpm student:android`                | …and open it in Expo Go on a running emulator | 8081 |
-| `pnpm student:ios`                    | …and open it in Expo Go on an iOS simulator   | 8081 |
-| `pnpm till`                           | Metro for the till app                        | 8082 |
-| `pnpm till:android` / `pnpm till:ios` | as above, for the till                        | 8082 |
-| `pnpm dashboard`                      | Vite dev server                               | 5173 |
-| `pnpm dashboard:build`                | Production build to `apps/dashboard/dist`     | n/a  |
-| `pnpm dashboard:preview`              | Serve the production build                    | 4173 |
+| Command                               | What                                                                       | Port |
+| ------------------------------------- | -------------------------------------------------------------------------- | ---- |
+| `pnpm student`                        | Metro for the student app (press `a` / `i`)                                | 8081 |
+| `pnpm student:android`                | …and open it in Expo Go on a running emulator                              | 8081 |
+| `pnpm student:ios`                    | …and open it in Expo Go on an iOS simulator                                | 8081 |
+| `pnpm till`                           | Metro for the till app                                                     | 8082 |
+| `pnpm till:android` / `pnpm till:ios` | as above, for the till                                                     | 8082 |
+| `pnpm dashboard`                      | Vite dev server                                                            | 5173 |
+| `pnpm dashboard:build`                | Production build to `apps/dashboard/dist`                                  | n/a  |
+| `pnpm dashboard:preview`              | Serve the production build                                                 | 4173 |
+| `pnpm dashboard:browser-check`        | Drive the served build in headless Chrome against the live API (read-only) | n/a  |
 
 Both Metro servers can run at the same time, and the apps have distinct native IDs
 (`dev.omerarslan.mensa.student`, `dev.omerarslan.mensa.till`), so their builds install side by side.
@@ -81,12 +97,14 @@ pnpm api:spec-diff    # opt-in, network: live OpenAPI vs committed copy (read-on
 ZAHLN_SMOKE_PASSWORD=<seeded password> pnpm api:smoke         # opt-in, network: see below
 ZAHLN_SMOKE_PASSWORD=<seeded password> pnpm api:order-probe   # opt-in, network, WRITES one cashier order
 ZAHLN_SMOKE_PASSWORD=<seeded password> pnpm api:payment-probe # opt-in, network, WRITES one order + one payment
+pnpm dashboard:browser-check [-- --url <URL>] [--idle]          # opt-in, network, read-only: dashboard in headless Chrome
 ```
 
 `pnpm api:smoke` sends only `GET /config`, `POST /sessions` (one seeded account), `GET /mensas` (with
 and without a token) and CORS preflights. It never creates orders, payments or refunds, keeps the
-token in memory and prints no token, password or user data. The seeded password is listed in the
-OpenAPI description's "Seeded logins" table; keep it out of committed files.
+token in memory and prints no token, password or user data. The seeded password is the published
+test password (see _Test logins_); the `.env.example` files leave it empty, so each build includes it
+deliberately.
 
 `pnpm api:order-probe` creates **one live order** as the seeded cashier `cashier-campus-1`, through the
 real intent path, and prints the QR payload with the order ID replaced by `<orderId>`. Its intent is
@@ -95,6 +113,39 @@ again reuses the same key and only reads. It never pays or refunds. `pnpm api:pa
 payment by the seeded student and records the payment's status and version as it settles; it resumes
 on a rerun and starts nothing new without `--new-order` / `--new-payment`. Live writes are listed in
 [docs/api-notes.md](docs/api-notes.md#live-writes-ledger).
+
+`pnpm dashboard:browser-check` signs in as `finance` in a fresh Chrome profile and compares the page
+with the API's own answers: report rows and figures, the attention list, four filter combinations,
+paging, the payment detail, a filtered and a complete CSV export (against an independent traversal),
+cancellation, German, phone width, reload and sign-out, plus CORS (no blocked request, preflights
+allowing `Authorization` and `X-Candidate-Id`). `--idle` waits 6.5 minutes to see the session renew.
+It defaults to the preview server and works against a deployed URL as well.
+
+## Dashboard deployment
+
+The dashboard is a static site. Nothing is deployed yet: a hosting account has to be chosen first.
+
+| What                                        | Value                                                                                                                            |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Build command                               | `pnpm install && pnpm dashboard:build`                                                                                           |
+| Output directory                            | `apps/dashboard/dist`                                                                                                            |
+| Environment (public, inlined at build time) | `VITE_API_BASE_URL=https://dev.zahln.de`, `VITE_CANDIDATE_ID=c_5b3ceacafb`, `VITE_SEEDED_PASSWORD=<the published test password>` |
+| SPA rewrites                                | None needed: routes live after `#`, so deep links and reloads work on any static host                                            |
+| CORS                                        | The API answers `Access-Control-Allow-Origin: *` and allows the requested headers; no proxy needed                               |
+
+Recommended: **Cloudflare Pages** with a direct upload of the locally built folder (free, HTTPS, no
+access to the private repository needed). After `pnpm dashboard:build`:
+
+```sh
+pnpm dlx wrangler@4.151.1 login                                          # once, in the browser
+pnpm dlx wrangler@4.151.1 pages project create mensa-dashboard --production-branch main
+pnpm dlx wrangler@4.151.1 pages deploy apps/dashboard/dist --project-name mensa-dashboard --branch main
+pnpm dashboard:browser-check -- --url <the https URL wrangler prints>    # the real-origin check
+```
+
+Equivalent on Netlify: `pnpm dlx netlify-cli@27.13.0 login`, then
+`pnpm dlx netlify-cli@27.13.0 deploy --dir apps/dashboard/dist --prod` (it offers to create the site).
+Then open the URL in a private window: sign in, a report day, a payment, a CSV download, DE/EN.
 
 ## Android standalone APK
 
@@ -109,7 +160,7 @@ The script runs `expo prebuild --clean` (regenerating the git-ignored `android/`
 `app.json`) and `gradlew assembleRelease` with JDK 17. The JavaScript is compiled to Hermes bytecode
 inside the APK, so it runs without Metro. File names carry the version, the Android build code, the
 ABIs and the source commit, with `-dirty` for a build from uncommitted changes, for example
-`mensa-student-1.0.0-2-armeabi-v7a+arm64-v8a-8a8c581.apk`. Current builds, checksums and their
+`mensa-student-1.0.0-3-armeabi-v7a+arm64-v8a-1b75e2b.apk`. Current builds, checksums and their
 verification: [docs/progress.md](docs/progress.md). All are signed with the React Native template
 **debug key** (installable and updatable over earlier builds from this repository, but not a Play Store
 build). EAS Build is the alternative route; it needs an Expo account and was not used.
@@ -123,13 +174,14 @@ runtime `appVersion` in `apps/*/src/api.ts` reads it and the transport sends it 
 | File                                  | Variables                                                                             | Visibility                                                                |
 | ------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
 | `apps/student/.env`, `apps/till/.env` | `EXPO_PUBLIC_API_BASE_URL`, `EXPO_PUBLIC_CANDIDATE_ID`, `EXPO_PUBLIC_SEEDED_PASSWORD` | **Public**: inlined into the app bundle (verified in the Hermes bytecode) |
-| `apps/dashboard/.env`                 | `VITE_API_BASE_URL`, `VITE_CANDIDATE_ID`                                              | **Public**: inlined into the web bundle                                   |
+| `apps/dashboard/.env`                 | `VITE_API_BASE_URL`, `VITE_CANDIDATE_ID`, `VITE_SEEDED_PASSWORD`                      | **Public**: inlined into the web bundle                                   |
 | `.env` (root)                         | `ZAHLN_*` for the smoke check                                                         | Local scripts only, never bundled                                         |
 
 The candidate ID is a data namespace sent on every request, not a credential. Client builds cannot
 keep secrets, so no secret or token belongs in any of these files. The one password,
-`EXPO_PUBLIC_SEEDED_PASSWORD`, is the mock's published test password: the apps need it to sign the
-seeded accounts in (mock-specific; a real app never ships a password). Bearer tokens are held in
+`EXPO_PUBLIC_SEEDED_PASSWORD` / `VITE_SEEDED_PASSWORD`, is the mock's published test password: the
+apps and the dashboard need it to sign the seeded accounts in (mock-specific; a real app never ships a
+password). Bearer tokens are held in
 memory only. Saved payment intents (Expo SecureStore on the device) hold IDs, amounts and states, never
 a token, password or name. `.env` files, signing material, generated native projects and `.local/` are
 git-ignored.
@@ -143,11 +195,11 @@ apps/dashboard    React + Vite web app                                   entry: 
 packages/api      contract copy, types, transport, client + validation   src/transport.ts, src/client.ts
 packages/domain   payment rules: intents, sessions, clock, gate, polling  src/intent-controller.ts
 packages/shared   i18n, formatting, design tokens, Tailwind preset        src/index.ts, tailwind-preset.cjs
-scripts/          env-init, standalone APK build
-docs/             architecture, API notes, progress record, review guide
+scripts/          env-init, standalone APK build, single-instance check, dashboard browser check
+docs/             design, architecture, API notes, progress record, manual tests, review guide
 ```
 
-More: [docs/architecture.md](docs/architecture.md) · [docs/api-notes.md](docs/api-notes.md) ·
+More: [docs/design.md](docs/design.md) · [docs/architecture.md](docs/architecture.md) · [docs/api-notes.md](docs/api-notes.md) ·
 [docs/review-guide.md](docs/review-guide.md)
 
 ## Technology choices
@@ -162,10 +214,13 @@ More: [docs/architecture.md](docs/architecture.md) · [docs/api-notes.md](docs/a
 | TypeScript 5.9, ESLint 9 (flat, type-aware), Prettier 3 | TypeScript 7 is not supported by typescript-eslint yet. ESLint 9 is deprecated upstream; ESLint 10 runs on the pinned Node 24 but is deferred to its own change.    |
 | `node:test` via tsx                                     | Platform-neutral logic is tested without a Jest/Babel setup.                                                                                                        |
 | expo-camera 17, expo-local-authentication 17            | SDK 54's own camera (with barcode scanning) and biometric/device-PIN prompt; both work in Expo Go on Android, and permissions are set in `app.json`.                |
+| Hash routes, no router or UI library in the dashboard   | Five screens; deep links survive any static host; small domain stores read through `useSyncExternalStore`.                                                          |
 | qrcode 1.5.4                                            | Mature QR encoder; the till draws its matrix with plain Views. react-native-qrcode-svg had eight releases in four days, and react-native-svg duplicated NativeWind. |
 
 ## Known blockers and limitations
 
+- **Public dashboard URL**: not deployed; a hosting account is the one missing choice (see
+  _Dashboard deployment_).
 - **Device testing is pending**: the apps were verified on an Android emulator only. The Pixel XL
   (fingerprint, Android 10 PIN fallback), the iPad till, the iPhone (Face ID, development build) and
   screen readers follow [docs/manual-tests.md](docs/manual-tests.md).
@@ -173,20 +228,23 @@ More: [docs/architecture.md](docs/architecture.md) · [docs/api-notes.md](docs/a
   the bearer token authorizes a payment.
 - **No lookup by idempotency key.** A payment, order or refund whose response was lost can only be
   settled by resending it with the same key within 24 hours. After that an unknown payment stays
-  unknown (the history shows what the server recorded), and an unknown refund keeps blocking another
-  refund on that payment, on purpose: nothing may make it look final.
-- **No cancel endpoint**: an open order runs out after 5 minutes; the till waits for paid or expired.
-- **Mock sessions**: the apps keep the published test password in memory to sign in again when the
-  5-minute token ends (the API has no refresh token); expired tokens answer `401 unauthorized` after
-  about a minute, which the apps treat like `session_expired`.
-- No Android tablet emulator: the till's two-column layout was checked on the phone emulator at a
-  tablet-like width (864 dp), and on the iPad simulator only in stage 1.
-- Changing the display size makes Android recreate the app's screen, and the app returns to sign-in
-  because the session lives in memory only; saved intents come back after signing in. Font size and
-  system language changes should do the same (not tested).
+  unknown, and an unknown refund keeps blocking another refund on that payment, on purpose.
+- **Reports and exports have no version or snapshot.** "Last fetched" is when a copy arrived; an
+  export reads every page of one cursor chain, so a payment that changes during the export appears
+  in its newest seen state. It is not an atomic accounting extract.
+- **Mock sessions**: the apps and the dashboard keep the published test password in memory to sign
+  in again when the 5-minute token ends (no refresh token); expired tokens answer `401 unauthorized`
+  after about a minute, handled like `session_expired`. The dashboard keeps nothing in storage, so a
+  reload asks to sign in again.
+- **Debug-signed APKs**: installable and updatable over earlier builds from this repository, not
+  store builds.
+- Changing the display size makes Android recreate the app's screen; the app returns to sign-in,
+  and saved intents come back after signing in. Font size and language changes should do the same
+  (not tested).
+- No Android tablet: the till's two-column layout was checked on the phone emulator at a tablet-like
+  width.
 - Plain `./gradlew`, Android Studio and `expo run:android` still get the JDK 11 pin from
   `~/.gradle/gradle.properties`; only `pnpm apk:*` overrides it.
-- Dashboard features and deployment, CI and crash reporting: stage 4 and later.
 
 ## Manual steps on this Mac
 
@@ -197,6 +255,6 @@ See [docs/progress.md](docs/progress.md#manual-steps) for the current, precise l
 - **ChatGPT (OpenAI)**: task analysis, prompt preparation and read-only source review.
 - **Claude Code (Anthropic)** in VS Code, model Claude Opus 5.5: implementation (code, tests,
   scripts and documentation) and the executed verification recorded in `docs/progress.md`, in
-  stages 1 to 3.
+  stages 1 to 4.
 
 Update this section as later stages use AI tools.

@@ -26,12 +26,12 @@ supplied file. Never modify `brief/`. Record live-spec differences in `docs/api-
 
 ## Current stage
 
-Stage 3 (usable student and till apps) is done; see `docs/progress.md`. The student app signs in a
-seeded payer, scans or types the order code, authorizes locally (biometric or device PIN), shows only
-the server's result and lists history including unresolved payments. The till rings up orders with a
-QR code, follows them to paid or expired and refunds in full or in part. Verified on an Android
-emulator with release builds; physical devices, fingerprint, Face ID and screen readers are pending
-(`docs/manual-tests.md`). Next: stage 4, the finance dashboard and its public deployment.
+Stage 4 (finance dashboard) is done apart from the public deployment, which waits for a hosting
+account; see `docs/progress.md`. The dashboard signs in the seeded `finance` account (public demo
+password from `VITE_SEEDED_PASSWORD`), shows Berlin daily totals, payments that need attention,
+filtered payments with full history, and exports CSV. Stage 3's apps are unchanged except for screen
+reader announcements (build 3). Device, screen-reader and deployed checks are pending
+(`docs/manual-tests.md`). Next: stage 5, submission.
 
 Live writes go only through intents (the apps, `pnpm api:order-probe`, `pnpm api:payment-probe`) and
 only when the current stage authorizes them; record each one in the ledger in `docs/api-notes.md`.
@@ -51,6 +51,7 @@ pnpm api:smoke          # opt-in live check: GET /config, POST /sessions, GET /m
 pnpm api:spec-diff      # opt-in: compare the live OpenAPI document with the committed copy
 pnpm api:order-probe    # opt-in, WRITES one live cashier order (QR format probe); see README
 pnpm api:payment-probe  # opt-in, WRITES one live order + payment, records settlement; resumes on re-run
+pnpm dashboard:browser-check   # read-only: built dashboard in headless Chrome vs the live API (--url, --idle)
 pnpm apk:student | pnpm apk:till   # release APKs (debug-key signed, commit in the file name)
 ```
 
@@ -60,7 +61,8 @@ mirrored in `.nvmrc` and `engines`). The system `node` on this Mac is 23.11 and 
 ## Boundaries
 
 - Dependency direction: `apps/* → @mensa/domain → @mensa/api`, and `apps/* → @mensa/shared`.
-  `api` and `shared` do not import each other.
+  `api` and `shared` do not import each other. Dashboard-only rules live in `@mensa/domain/finance`,
+  an entry point the native apps never import (Metro does not tree-shake).
 - `packages/*/src` is platform-neutral: no `react-native`, `expo*`, `nativewind`, `react-dom`,
   `node:*`, `process`, `window`/`document`. ESLint enforces this. React-only bindings live under
   `@mensa/shared/react`.
@@ -122,11 +124,15 @@ dashboard; 12 is implemented as a device gate.
   `className` on `KeyboardAvoidingView` (give it a style, as `Screen` does). Exactly one copy of react,
   react-native, react-native-css-interop and nativewind may exist: an optional peer that differs
   between apps (react-native-svg did) duplicates css-interop, and `pnpm check:instances` fails.
+- Screen-reader announcements go through `useAnnouncement` only (both platforms, focused screen
+  only, once per change); never also an Android live region for the same message.
+- The dashboard keeps nothing in localStorage or cookies, and uses hash routes (`#/…`).
 - Side-by-side columns need `collapsable={false}` and `importantForAccessibility="yes"`, or Android
   screen readers mix their contents by screen position (see the till's `CheckoutScreen`).
 - Comments explain decisions, not syntax. JSDoc on public functions. Keep functions short enough to
   explain in an interview.
-- Tests: `node:test` via `tsx`, colocated `*.test.ts`, only for behaviour worth protecting. Test
+- Tests: `node:test` via `tsx`, colocated `*.test.ts`, only for behaviour worth protecting; the root
+  `pnpm test` runs `packages/*/src` and `apps/dashboard/src`. Test
   doubles live in `packages/*/src/testing/` and are never exported from a package index (Metro does
   not tree-shake; they would ship in the app bundles).
 - The student and till apps keep identical copies (apart from the header comment naming the other

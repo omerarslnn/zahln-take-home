@@ -23,6 +23,9 @@ command that proves the change.
 10. `apps/student/src/payments/`: the SecureStore adapter and the provider that wires everything into
     the app; then the screens in `apps/student/src/screens/` and `apps/till/src/screens/`.
 11. `eslint.config.mjs`: the platform boundary as rules.
+12. Finance (stage 4): `packages/domain/src/finance/` (read-only API, `DailyReportStore`,
+    `collectPayments`, `paymentsToCsv`), `packages/shared/src/format/berlin-days.ts`, then
+    `apps/dashboard/src/finance/` (session, hooks, filters) and `apps/dashboard/src/pages/`.
 
 ## Follow one payment through the code
 
@@ -57,6 +60,74 @@ The live payment of 2026-11-01 (staff, €5.80, `pay_90d914f2be37a714`) took thi
    (from `paymentDisplay`) says "Paid" only for `confirmed`; the screen reader hears it once.
 10. **Till** (`apps/till/src/screens/CheckoutScreen.tsx`): its own controller polls the order intent
     (`paying v2` → `paid v3`); `PaidResult` reads the payment for the payer's amount and price group.
+
+## Four walkthroughs
+
+### 1. A payment whose response was lost
+
+1. **Pay** (`IntentController.payOrder` → `runAttempt`): the intent is saved as `submitting` with
+   its key K and body, then `POST /orders/{id}/payments` goes out. It answers `504 timeout`.
+2. **Classify** (`classifyWrite`): a `504` after a write proves nothing, so the intent becomes
+   `unknown` with `maybeApplied`; the result screen says "Outcome not known yet", never "declined".
+3. **Check again** (`reconcile`, `observePayment`): reads can only settle in the safe direction. An
+   order that is `paid` without this payer's payment means "not charged"; no read ever links a
+   payment to the intent, because no payment carries its key and a stale list could show an
+   earlier attempt.
+4. **Send again safely** (`retry`): local authorization again, then the same key and the same body.
+   The server answers the original payment (`Idempotent-Replayed: true`); the intent is `applied`
+   and polling follows it to `confirmed`.
+5. **Killed in between**: the record is in SecureStore; the next start loads it for the same user and
+   Home lists it. After 23 hours by server time it is only read, never resent.
+
+Tests: `intent-controller.test.ts`, "recovers a payment the server recorded when the response was
+lost, with the same key and body", "after a restart, keeps the saved intent unknown until its own
+same-key resend settles it" and "beyond the key retention window it never replays…".
+
+### 2. A cross-day refund in the daily report
+
+25 October 2026 (a Sunday, and a 25-hour day): `GET /reports/daily-totals?date=2026-10-25` returns
+no payments, €2.70 of refunds completed and a net of −€2.70. A refund counts on the day it
+completed, so a refund of an earlier payment lowers that Sunday's net below zero.
+
+1. `ReportPage` reads the day from the address (`#/report?day=2026-10-25`); with no day, "today" is the
+   Berlin date by server time (`useServerNow`, `berlinDateKey`).
+2. `useDailyReport` → `DailyReportStore.select(day)` → `FinanceApi.getDailyTotals(day)` (session,
+   bounded retries). The store drops answers for a day no longer selected, refuses a report for
+   another `date`, and keeps the last good copy with its `fetchedAt` when a refresh fails.
+3. `ReportTotals` shows the response's own fields, overall, per mensa and per till; nothing is added
+   up from payment lists. The decoder accepts a negative `netCents` (`d.signedCents`); the page
+   explains it instead of clamping it.
+
+Evidence: `daily-report.test.ts`; `pnpm dashboard:browser-check` compares every row with the API
+response and checks net = gross − refunds at every level.
+
+### 3. A Berlin date filter
+
+The user picks 25.10.2026 to 25.10.2026 and applies the filters.
+
+1. `FilterForm` → `#/transactions?from=2026-10-25&to=2026-10-25` → `filterFromParams` keeps only real
+   calendar days.
+2. `toPaymentQuery` → `berlinDayBound` (`packages/shared/src/format/berlin-days.ts`):
+   `from=2026-10-25T00:00:00+02:00` (inclusive) and `to=2026-10-26T00:00:00+01:00` (exclusive): 25
+   hours. 29 March 2026 gives 23. No host time zone is involved; tests run under other zones too.
+3. The daily report is a different operation: it takes `date=2026-10-25` and the server converts.
+
+Evidence: `berlin-days.test.ts`, `filters.test.ts`; live, the confirmed payments of the 23 October
+range equal that day's report (223 payments, €811.60).
+
+### 4. A CSV export across pages
+
+1. "Export all matching payments" → `useExport.start(filter)` captures the filter (its key and query).
+2. `collectPayments` (`packages/domain/src/finance/payment-export.ts`) asks for 200 per page and
+   follows `nextCursor` until it is null. A repeated cursor, an empty page that still points onward,
+   or a page that fails after the finance API's three attempts ends the export with no file; so does
+   a cancel, a new filter or a new session. Pages that overlap are merged by ID, keeping the highest
+   version; the result is sorted newest first, then by ID.
+3. `paymentsToCsv`: fixed columns, raw cents, ISO times, UTF-8 with BOM, CRLF, RFC 4180 quoting and
+   formula neutralisation; `downloadText` saves it and revokes the object URL.
+
+Evidence: `payment-export.test.ts`, `payment-csv.test.ts`; live, 5,582 payments in 28 pages, equal to
+an independent traversal.
 
 ## Native concepts, mapped
 
@@ -121,11 +192,24 @@ has no React Native, Expo, DOM, Node built-ins or `console`. React bindings live
    the contract says so; the `Fields<T>` type rejects a field the generated type does not have).
 2. `pnpm typecheck && pnpm test`. A body without a required field now becomes `invalid_response`.
 
-**Show a payment intent on screen (next stage)**
+**Show a payment intent on screen**
 
-Subscribe to the controller (`controller.subscribe`), read `controller.get(key)`, and switch on
+Subscribe to the controller (`useControllerRevision`), read `controller.get(key)`, and switch on
 `paymentDisplay(record)`. Only `confirmed` is success; `checking` and `pending` are never shown as
 paid or declined.
+
+**Add a CSV column**
+
+1. Add the name to `PAYMENT_CSV_COLUMNS` and the value to `paymentRow` in
+   `packages/domain/src/finance/payment-csv.ts`: `csvInteger` for numbers, `csvText` for any text.
+2. Extend `payment-csv.test.ts`; `pnpm test`. Document the column in the README if reviewers rely on it.
+
+**Add a transaction filter**
+
+1. Add the field to `TransactionFilter`, `NO_FILTER`, `toPaymentQuery`, `PARAM` and
+   `filterFromParams` in `apps/dashboard/src/finance/filters.ts` (validate what comes from the
+   address), then a control in `FilterForm` (`apps/dashboard/src/pages/TransactionsPage.tsx`).
+2. Extend `filters.test.ts`; the export picks the filter up through `toPaymentQuery` automatically.
 
 **Add a screen to the student app**
 
@@ -207,6 +291,23 @@ different peer set, crashes at runtime. Do not import it from the dashboard.
   NativeWind relies on hoisting; pnpm's isolated layout makes those dependencies explicit
   (architecture notes, point 3).
 - _Is the candidate ID a secret?_ No: a data namespace, embedded in every client build.
-- _What is verified on devices?_ The table in `docs/progress.md`. The tests run against a simulated
-  server; the app runs were on an emulator and in Expo Go, not on a physical phone, and no payment
-  screen exists yet.
+- _What is verified on devices?_ The tables in `docs/progress.md`. The tests run against a simulated
+  server; the app runs were on an Android emulator with release builds and in Expo Go, not on a
+  physical phone; no screen reader has been run.
+- _Why are the daily totals not added up from the payment list?_ The report counts refunds on the
+  day they completed, which a payment list cannot show, and the list is paged. The report response is
+  the source; the browser check compares every row with it.
+- _Why "last fetched", not "as of"?_ Reports carry no version or snapshot time; the `Date` header
+  dates the response, not the data behind it.
+- _Why does a failed refresh keep the old numbers?_ They stay labelled with their own fetch time;
+  without a good copy no numbers are shown, so a zero is always a zero the server sent.
+- _Is the export complete?_ It follows one cursor chain to `nextCursor: null` and saves only then; a
+  failed or repeated page, a cancel or a new filter saves nothing. Without a snapshot token, data can
+  change between pages: each payment appears once, at the newest version seen.
+- _Why the leading apostrophe in some CSV cells?_ Text that starts like a formula (`=`, `+`, `-`,
+  `@`, tab, line break) would run in a spreadsheet; quoting alone does not stop that.
+- _Why hash routes?_ Deep links and reloads work on any static host without rewrite rules.
+- _Why is the finance password in the web bundle?_ It is the mock's published test password, set as
+  `VITE_SEEDED_PASSWORD` deliberately; a production dashboard would ship no password.
+- _Why is the export code not in the phone apps?_ It lives behind `@mensa/domain/finance`, which the
+  native apps never import; Metro would bundle anything imported, used or not.
