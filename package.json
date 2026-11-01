@@ -19,6 +19,7 @@
     "dashboard": "pnpm --filter @mensa/dashboard dev",
     "dashboard:build": "pnpm --filter @mensa/dashboard build",
     "dashboard:preview": "pnpm --filter @mensa/dashboard preview",
+    "dashboard:browser-check": "node scripts/dashboard-browser-check.mjs",
     "api:generate": "pnpm --filter @mensa/api generate",
     "api:smoke": "pnpm --filter @mensa/api smoke",
     "api:spec-diff": "pnpm --filter @mensa/api spec-diff",
@@ -31,7 +32,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "pnpm -r typecheck",
-    "test": "tsx --test \"packages/*/src/**/*.test.ts\"",
+    "test": "tsx --test \"packages/*/src/**/*.test.ts\" \"apps/dashboard/src/**/*.test.ts\"",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm check:instances && pnpm dashboard:build",
     "check:instances": "node scripts/check-single-instances.mjs"
   },

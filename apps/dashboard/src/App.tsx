@@ -1,84 +1,71 @@
-import {
-  berlinDateKey,
-  colors,
-  formatBerlinDateTime,
-  formatCents,
-  type ColorToken,
-} from '@mensa/shared';
-import { useI18n, useNow } from '@mensa/shared/react';
-import { useEffect, type ReactNode } from 'react';
-import { ConnectionCheck } from './ConnectionCheck';
-import { LanguageSwitch } from './LanguageSwitch';
+import { useI18n } from '@mensa/shared/react';
+import { useEffect } from 'react';
+import { Layout } from './components/Layout';
+import { useFinanceSession } from './finance/session';
+import { AttentionPage } from './pages/AttentionPage';
+import { DiagnosticsPage } from './pages/DiagnosticsPage';
+import { PaymentPage } from './pages/PaymentPage';
+import { ReportPage } from './pages/ReportPage';
+import { SignInPage } from './pages/SignInPage';
+import { TransactionsPage } from './pages/TransactionsPage';
+import type { Route } from './routing';
+import { useHashRoute } from './useHashRoute';
 
-const SWATCHES: ColorToken[] = ['brand', 'ink', 'inkMuted', 'success', 'warning', 'danger'];
-
-/** Foundation shell: proves shared tokens, translations, formatting and the API transport on the web. */
+/** Sign-in first; then the page named by the address. A reload keeps the address but not the session. */
 export function App() {
-  const { t, locale } = useI18n();
+  const { locale } = useI18n();
+  const { state } = useFinanceSession();
+  const route = useHashRoute();
 
   useEffect(() => {
     // Screen readers pick pronunciation from the document language.
     document.documentElement.lang = locale;
-    document.title = t('dashboard.title');
-  }, [locale, t]);
+  }, [locale]);
 
-  const now = useNow();
-
-  return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-4 px-4 py-6 sm:px-8">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">{t('dashboard.title')}</h1>
-          <p className="mt-2 inline-block rounded-control bg-warning px-2 py-1 text-sm font-semibold text-white">
-            {t('foundation.badge')}
-          </p>
-        </div>
-        <LanguageSwitch />
-      </header>
-
-      <Panel>
-        <p>{t('foundation.notice')}</p>
-        <p className="mt-2 text-ink-muted">{t('dashboard.next')}</p>
-      </Panel>
-
-      <Panel title={t('foundation.tokens')}>
-        <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          {SWATCHES.map((token) => (
-            <li key={token} className="flex items-center gap-3">
-              <span
-                aria-hidden="true"
-                className="h-8 w-8 rounded-control border border-line"
-                style={{ backgroundColor: colors[token] }}
-              />
-              <span>
-                {token} <span className="text-ink-muted">{colors[token]}</span>
-              </span>
-            </li>
-          ))}
-        </ul>
-      </Panel>
-
-      <Panel title={t('foundation.formatting')}>
-        <dl className="grid gap-x-6 gap-y-2 sm:grid-cols-[auto_1fr]">
-          <dt className="text-ink-muted">{t('foundation.sampleAmount')}</dt>
-          <dd className="font-semibold">{formatCents(1250, locale)}</dd>
-          <dt className="text-ink-muted">{t('foundation.berlinTime')}</dt>
-          <dd className="font-semibold">{formatBerlinDateTime(now, locale)}</dd>
-          <dt className="text-ink-muted">{t('foundation.reportDay')}</dt>
-          <dd className="font-semibold">{berlinDateKey(now)}</dd>
-        </dl>
-      </Panel>
-
-      <ConnectionCheck />
-    </main>
-  );
+  return state.status === 'signed_in' ? <SignedIn route={route} /> : <SignInPage />;
 }
 
-function Panel({ title, children }: { title?: string; children: ReactNode }) {
-  return (
-    <section className="rounded-card bg-surface p-4 shadow-sm">
-      {title && <h2 className="mb-3 text-lg font-semibold">{title}</h2>}
-      {children}
-    </section>
-  );
+function SignedIn({ route }: { route: Route }) {
+  const { t } = useI18n();
+  switch (route.page) {
+    case 'report':
+      return (
+        <Layout route={route} title={t('finance.nav.report')}>
+          <ReportPage day={route.day} />
+        </Layout>
+      );
+    case 'attention':
+      return (
+        <Layout route={route} title={t('finance.nav.attention')}>
+          <AttentionPage />
+        </Layout>
+      );
+    case 'transactions':
+      return (
+        <Layout route={route} title={t('finance.nav.transactions')}>
+          <TransactionsPage filter={route.filter} />
+        </Layout>
+      );
+    case 'payment':
+      return (
+        <Layout route={route} title={t('finance.payment.title', { id: route.paymentId })}>
+          <PaymentPage key={route.paymentId} paymentId={route.paymentId} back={route.back} />
+        </Layout>
+      );
+    case 'diagnostics':
+      return (
+        <Layout route={route} title={t('finance.nav.diagnostics')}>
+          <DiagnosticsPage />
+        </Layout>
+      );
+    case 'not_found':
+      return (
+        <Layout route={route} title={t('finance.notFound.title')}>
+          <p>{t('finance.notFound.body')}</p>
+          <a href="#/report" className="font-semibold text-brand underline">
+            {t('finance.nav.report')}
+          </a>
+        </Layout>
+      );
+  }
 }

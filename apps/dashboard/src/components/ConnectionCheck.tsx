@@ -2,7 +2,7 @@ import type { AppConfig, TransportResult } from '@mensa/api';
 import { formatBerlinDateTime } from '@mensa/shared';
 import { useI18n } from '@mensa/shared/react';
 import { useEffect, useState } from 'react';
-import { apiClient, missingEnvNames } from './api';
+import { apiClient, missingApiEnvNames } from '../api';
 
 type CheckState =
   { phase: 'idle' } | { phase: 'running' } | { phase: 'done'; result: TransportResult<AppConfig> };
@@ -54,7 +54,7 @@ export function ConnectionCheck() {
         </button>
       ) : (
         <p role="alert" className="mt-3 font-semibold text-danger">
-          {t('connection.configMissing', { names: missingEnvNames.join(', ') })}
+          {t('connection.configMissing', { names: missingApiEnvNames.join(', ') })}
         </p>
       )}
       <div aria-live="polite" className="mt-3">
