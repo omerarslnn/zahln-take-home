@@ -8,6 +8,7 @@
   },
   "scripts": {
     "order-probe": "tsx scripts/order-probe.ts",
+    "payment-probe": "tsx scripts/payment-probe.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

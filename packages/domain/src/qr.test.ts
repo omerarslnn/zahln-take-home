@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { parseOrderQr } from './qr';
+import { parseOrderCode, parseOrderQr } from './qr';
 
 describe('parseOrderQr', () => {
   it('accepts the observed format and extracts the order ID', () => {
@@ -34,5 +34,16 @@ describe('parseOrderQr', () => {
     for (const id of ['', 'ord%2F1', 'ord/1', 'ord 1', 'x'.repeat(65)]) {
       assert.equal(parseOrderQr(`zahln://pay?order=${id}`).ok, false, id);
     }
+  });
+
+  it('accepts a typed order code as the QR text or the bare ID, and nothing else', () => {
+    assert.deepEqual(parseOrderCode(' ord_0a1b2c3d4e5f6a7b '), {
+      ok: true,
+      orderId: 'ord_0a1b2c3d4e5f6a7b',
+    });
+    assert.deepEqual(parseOrderCode('zahln://pay?order=ord_x'), { ok: true, orderId: 'ord_x' });
+    assert.equal(parseOrderCode('https://evil.test/?order=ord_x').ok, false);
+    assert.equal(parseOrderCode('ord x').ok, false);
+    assert.equal(parseOrderCode('').ok, false);
   });
 });

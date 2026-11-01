@@ -1,7 +1,7 @@
-// Small building blocks of the foundation screen. The student app has its own copy on purpose: sharing
+// Small building blocks shared by the screens. The student app has its own copy on purpose: sharing
 // React Native components needs a native-only package (see docs/review-guide.md).
-import { colors, formatBerlinDateTime, formatCents, LOCALES, type ColorToken } from '@mensa/shared';
-import { useI18n, useNow } from '@mensa/shared/react';
+import { LOCALES } from '@mensa/shared';
+import { useI18n } from '@mensa/shared/react';
 import type { ReactNode } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
@@ -14,15 +14,6 @@ export function Card({ title, children }: { title?: string; children: ReactNode 
         </Text>
       ) : null}
       {children}
-    </View>
-  );
-}
-
-export function FoundationBadge() {
-  const { t } = useI18n();
-  return (
-    <View className="self-start rounded-control bg-warning px-2 py-1">
-      <Text className="text-sm font-semibold text-white">{t('foundation.badge')}</Text>
     </View>
   );
 }
@@ -55,43 +46,6 @@ export function LanguageSwitch() {
         );
       })}
     </View>
-  );
-}
-
-const SWATCHES: ColorToken[] = ['brand', 'ink', 'inkMuted', 'success', 'warning', 'danger'];
-
-export function TokenSwatches() {
-  const { t } = useI18n();
-  return (
-    <Card title={t('foundation.tokens')}>
-      <View className="flex-row flex-wrap gap-3">
-        {SWATCHES.map((token) => (
-          <View
-            key={token}
-            accessible
-            accessibilityLabel={`${token} ${colors[token]}`}
-            className="w-36 flex-row items-center gap-2"
-          >
-            <View
-              className="h-8 w-8 rounded-control border border-line"
-              style={{ backgroundColor: colors[token] }}
-            />
-            <Text className="text-ink">{token}</Text>
-          </View>
-        ))}
-      </View>
-    </Card>
-  );
-}
-
-export function FormatPreview() {
-  const { t, locale } = useI18n();
-  const now = useNow();
-  return (
-    <Card title={t('foundation.formatting')}>
-      <LabelledValue label={t('foundation.sampleAmount')} value={formatCents(1250, locale)} />
-      <LabelledValue label={t('foundation.berlinTime')} value={formatBerlinDateTime(now, locale)} />
-    </Card>
   );
 }
 

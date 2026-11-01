@@ -112,12 +112,13 @@ export class FakeMensaServer {
   ];
   private readonly faults = new Map<Route, Fault[]>();
   private readonly tokens = new Map<string, string>();
-  private readonly expiredTokens = new Set<string>();
+  private readonly expiredTokens = new Map<string, 'session_expired' | 'unauthorized'>();
   private readonly orders = new Map<string, OrderState[]>();
   private readonly payments = new Map<string, PaymentState[]>();
   private readonly refunds = new Map<string, RefundState>();
   private readonly idempotency = new Map<string, StoredResult>();
   private readonly holds = new Map<Route, Promise<void>>();
+  private readonly nextHolds = new Map<Route, Promise<void>[]>();
   private sequence = 0;
   /** Called when a request arrives, before the server does anything. */
   onRequest: ((route: Route) => void) | null = null;
@@ -142,8 +143,12 @@ export class FakeMensaServer {
     return latest(this.orders.get(orderId) ?? []).expiresAt;
   }
 
-  expireSessions(): void {
-    for (const token of this.tokens.keys()) this.expiredTokens.add(token);
+  /**
+   * Ends every current session. `unauthorized` is what the live API answers once a token has been
+   * expired for a while (observed 2026-11-01: `session_expired` at 5.2 minutes, `unauthorized` at 6).
+   */
+  expireSessions(code: 'session_expired' | 'unauthorized' = 'session_expired'): void {
+    for (const token of this.tokens.keys()) this.expiredTokens.set(token, code);
     this.tokens.clear();
   }
 
@@ -187,6 +192,14 @@ export class FakeMensaServer {
     return this.insertOrder('till_1', items, id).id;
   }
 
+  /** Only the next request to `route` waits until the returned function is called. */
+  holdNext(route: Route): () => void {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    this.nextHolds.set(route, [...(this.nextHolds.get(route) ?? []), held]);
+    return release;
+  }
+
   readonly fetch: typeof fetch = async (input, init) => {
     const url = new URL(
       typeof input === 'string' ? input : input instanceof URL ? input.href : input.url,
@@ -198,6 +211,7 @@ export class FakeMensaServer {
     this.requests.push({ route, idempotencyKey: headers.get('idempotency-key'), body });
     this.onRequest?.(route);
     await this.holds.get(route);
+    await this.nextHolds.get(route)?.shift();
     const fault = this.faults.get(route)?.shift();
 
     if (fault?.type === 'problem') return this.problem(fault.status, fault.code);
@@ -236,7 +250,8 @@ export class FakeMensaServer {
     if (route === 'createSession') return this.login(body);
 
     const token = headers.get('authorization')?.replace(/^Bearer /, '') ?? '';
-    if (this.expiredTokens.has(token)) return problemReply(401, 'session_expired');
+    const ended = this.expiredTokens.get(token);
+    if (ended) return problemReply(401, ended);
     const user = this.users.find((candidate) => candidate.id === this.tokens.get(token));
     if (!user) return problemReply(401, 'unauthorized');
 

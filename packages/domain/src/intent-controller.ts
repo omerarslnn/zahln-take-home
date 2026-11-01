@@ -2,6 +2,7 @@ import { toIdempotencyKey, type Order, type Payment, type Refund, type Role } fr
 import {
   afterUnapplied,
   beginAttempt,
+  canCloseUnshownOrder,
   isFinal,
   needsReads,
   newIntent,
@@ -94,9 +95,11 @@ type Attempted = IntentRecord | typeof STORAGE_FAILED;
  * nothing is resubmitted on reconnect or restart.
  */
 export class IntentController {
-  readonly cache = new ResourceCache();
+  /** Newest known orders and payments; a change notifies subscribers like a record change. */
+  readonly cache = new ResourceCache(() => this.emit());
   /** Stored entries that could not be read back. Reported, never dropped silently. */
   unreadable = 0;
+  private changes = 0;
   private readonly records = new Map<string, IntentRecord>();
   private readonly inFlight = new Map<string, Promise<Attempted>>();
   private readonly starting = new Map<string, Promise<StartOutcome>>();
@@ -129,6 +132,15 @@ export class IntentController {
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  /**
+   * A number that changes whenever records, polling or cached resources change. It is the stable
+   * snapshot for React's `useSyncExternalStore`: `list()` returns a new array on every call, and a
+   * snapshot that never compares equal would re-render forever.
+   */
+  revision(): number {
+    return this.changes;
   }
 
   /** Loads this scope's saved intents. "Maybe sent" ones become unknown and are read, not resent. */
@@ -255,10 +267,34 @@ export class IntentController {
     return run;
   }
 
+  /**
+   * The screens' "check again": reads now and, if reads can still teach something, polls again
+   * with a fresh budget (polling had stopped without deciding anything). Never resends a write.
+   */
+  async checkAgain(key: string): Promise<IntentRecord | undefined> {
+    const record = await this.reconcile(key);
+    if (record && needsReads(record) && !this.disposed) this.poller.track(key);
+    return record;
+  }
+
   /** Removes a settled intent after its result was shown. The server keeps the history. */
   async acknowledge(key: string): Promise<boolean> {
     const record = this.records.get(key);
     if (!record || !isFinal(record) || this.inFlight.has(key)) return false;
+    await this.forget(key);
+    return true;
+  }
+
+  /**
+   * Closes an order intent whose create response never arrived, once any order it may have created
+   * must have expired unseen (`canCloseUnshownOrder`). Without this a till could stay blocked by an
+   * order that can no longer be recovered, for example after the menu changed. Payments and refunds
+   * have no such exit: they move money, so an unresolved one stays.
+   */
+  async closeUnshownOrder(key: string): Promise<boolean> {
+    const record = this.records.get(key);
+    if (!record || this.inFlight.has(key)) return false;
+    if (!canCloseUnshownOrder(record, await this.serverTime())) return false;
     await this.forget(key);
     return true;
   }
@@ -549,6 +585,7 @@ export class IntentController {
 
   private emit(): void {
     if (this.disposed) return;
+    this.changes += 1;
     for (const listener of this.listeners) listener();
   }
 }

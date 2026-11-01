@@ -103,6 +103,23 @@ describe('SessionCoordinator', () => {
     assert.equal(app.session.user()?.id, 'usr_staff');
   });
 
+  it('logs in again when the server has forgotten an expired token (401 unauthorized)', async () => {
+    const env = new TestEnvironment();
+    const app = await env.startApp('student');
+    const orderId = env.server.seedOrder(PASTA);
+    env.server.expireSessions('unauthorized'); // what the live API says a minute after expiry
+
+    const outcome = await app.controller.payOrder(orderId, 500);
+    assert.equal(outcome.type, 'submitted');
+    assert.equal(env.server.postedWrites('createSession').length, 2); // sign-in + one re-login
+    const posts = env.server.postedWrites('createPayment');
+    assert.deepEqual(
+      [posts.length, posts[1]?.idempotencyKey === posts[0]?.idempotencyKey],
+      [2, true],
+    );
+    assert.equal(env.server.applied.createPayment, 1);
+  });
+
   it('stops when the re-login answers with a different user', async () => {
     const env = new TestEnvironment();
     const app = await env.startApp('student');

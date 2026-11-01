@@ -23,6 +23,7 @@
     "api:smoke": "pnpm --filter @mensa/api smoke",
     "api:spec-diff": "pnpm --filter @mensa/api spec-diff",
     "api:order-probe": "pnpm --filter @mensa/domain order-probe",
+    "api:payment-probe": "pnpm --filter @mensa/domain payment-probe",
     "bundle:native": "pnpm --filter @mensa/student --filter @mensa/till bundle",
     "apk:student": "node scripts/build-android-apk.mjs student",
     "apk:till": "node scripts/build-android-apk.mjs till",
@@ -31,7 +32,8 @@
     "format:check": "prettier --check .",
     "typecheck": "pnpm -r typecheck",
     "test": "tsx --test \"packages/*/src/**/*.test.ts\"",
-    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm dashboard:build"
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm check:instances && pnpm dashboard:build",
+    "check:instances": "node scripts/check-single-instances.mjs"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",

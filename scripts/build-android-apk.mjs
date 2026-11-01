@@ -20,7 +20,13 @@ if (app !== 'student' && app !== 'till') {
 const root = resolve(import.meta.dirname, '..');
 const appDir = join(root, 'apps', app);
 const abis = process.env.ANDROID_ABIS ?? 'armeabi-v7a,arm64-v8a';
-const version = JSON.parse(readFileSync(join(appDir, 'app.json'), 'utf8')).expo.version;
+const expo = JSON.parse(readFileSync(join(appDir, 'app.json'), 'utf8')).expo;
+const version = expo.version;
+const versionCode = expo.android?.versionCode ?? 1;
+// The source commit goes into the file name; "-dirty" marks a build with uncommitted changes, so
+// an iteration build is never mistaken for one made from a pushed commit.
+const git = (args) => spawnSync('git', args, { cwd: root, encoding: 'utf8' }).stdout.trim();
+const commit = `${git(['rev-parse', '--short=7', 'HEAD'])}${git(['status', '--porcelain']) ? '-dirty' : ''}`;
 
 if (!existsSync(join(appDir, '.env'))) {
   console.error(
@@ -60,7 +66,10 @@ const builtApk = join(
   'app-release.apk',
 );
 const outDir = join(root, 'artifacts', 'android');
-const outApk = join(outDir, `mensa-${app}-${version}-${abis.replaceAll(',', '+')}.apk`);
+const outApk = join(
+  outDir,
+  `mensa-${app}-${version}-${versionCode}-${abis.replaceAll(',', '+')}-${commit}.apk`,
+);
 mkdirSync(outDir, { recursive: true });
 copyFileSync(builtApk, outApk);
 console.log(`\nStandalone APK: ${outApk}\nInstall with: adb install -r "${outApk}"`);

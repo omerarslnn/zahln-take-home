@@ -10,6 +10,14 @@ const apiConfig = parsePublicApiConfig({
 });
 
 /**
+ * The password of the mock's seeded test accounts, published in the API description. It is in the
+ * bundle on purpose: the app signs a chosen test account in with it, and again when the 5-minute
+ * token expires. Mock-specific; a real app would never ship a password. Only `PaymentServices`
+ * reads it; components, logs and saved records never see it.
+ */
+export const seededPassword = process.env.EXPO_PUBLIC_SEEDED_PASSWORD ?? '';
+
+/**
  * This build's release version: `expo.version` in app.json, the value that also becomes Android's
  * versionName and iOS's CFBundleShortVersionString. Sent as X-App-Version on every request; the API
  * refuses payments from versions below its `minAppVersion` (currently 1.0.0).
@@ -36,4 +44,7 @@ const ENV_NAMES = {
   baseUrl: 'EXPO_PUBLIC_API_BASE_URL',
   candidateId: 'EXPO_PUBLIC_CANDIDATE_ID',
 } as const;
-export const missingEnvNames = apiConfig.ok ? [] : apiConfig.missing.map((key) => ENV_NAMES[key]);
+export const missingEnvNames = [
+  ...(apiConfig.ok ? [] : apiConfig.missing.map((key) => ENV_NAMES[key])),
+  ...(seededPassword ? [] : ['EXPO_PUBLIC_SEEDED_PASSWORD']),
+];

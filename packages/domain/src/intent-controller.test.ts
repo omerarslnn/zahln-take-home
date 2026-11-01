@@ -26,6 +26,10 @@ function payment(record: IntentRecord | undefined): PayOrderIntent {
   return record;
 }
 
+function orderStatus(record: IntentRecord | undefined): string | undefined {
+  return record?.kind === 'createOrder' ? record.resource?.status : undefined;
+}
+
 function refund(record: IntentRecord | undefined): RefundIntent {
   assert.ok(record?.kind === 'refundPayment', 'expected a refund intent');
   return record;
@@ -494,16 +498,62 @@ describe('order intents (till)', () => {
     assert.equal(posts[1]?.idempotencyKey, posts[0]?.idempotencyKey);
   });
 
-  it('keeps one order in progress at a time; a new order needs the previous result acknowledged', async () => {
+  it('keeps an open checkout across a restart; the next order waits for paid or expired', async () => {
     const env = new TestEnvironment();
     const till = await env.startApp('cashier');
     const first = intentOf(await till.controller.createOrder(PASTA));
-    assert.equal((await till.controller.createOrder(PASTA)).type, 'existing');
-    const next = await till.controller.createOrder([{ itemId: 'itm_salad', quantity: 2 }], {
-      afterFinalKey: first.key,
-    });
+    assert.equal((await till.controller.createOrder(PASTA)).type, 'existing'); // double tap
+    till.controller.dispose();
+
+    const restarted = await env.startApp('cashier');
+    const kept = restarted.controller.get(first.key);
+    assert.ok(kept?.kind === 'createOrder');
+    assert.deepEqual([kept.state, kept.resource?.status], ['applied', 'open']);
+    assert.equal(restarted.controller.pollState(first.key), 'polling');
+    // The order exists and can still be paid: no new order, and it cannot be dismissed.
+    const salad = [{ itemId: 'itm_salad', quantity: 2 }];
+    assert.equal((await restarted.controller.createOrder(salad)).type, 'conflict');
+    assert.equal(
+      (await restarted.controller.createOrder(salad, { afterFinalKey: first.key })).type,
+      'conflict',
+    );
+    assert.equal(await restarted.controller.acknowledge(first.key), false);
+
+    // A payer pays it; only the server's `paid` ends the checkout.
+    const student = await env.startApp('student');
+    const orderId = kept.resource?.orderId ?? '';
+    const paying = payment(intentOf(await student.controller.payOrder(orderId, 500)));
+    await restarted.controller.reconcile(first.key);
+    assert.equal(orderStatus(restarted.controller.get(first.key)), 'paying'); // not paid yet
+    assert.equal(await restarted.controller.acknowledge(first.key), false);
+    env.server.settlePayment(paying.resource?.paymentId ?? '', 'confirmed');
+    await restarted.controller.reconcile(first.key);
+    assert.equal(orderStatus(restarted.controller.get(first.key)), 'paid');
+
+    const next = await restarted.controller.createOrder(salad, { afterFinalKey: first.key });
     assert.equal(next.type, 'submitted');
-    assert.equal(till.controller.get(first.key), undefined); // the acknowledged result is gone
+    assert.equal(restarted.controller.get(first.key), undefined);
+    assert.equal(env.server.applied.createOrder, 2);
+  });
+
+  it('closes an order whose QR was never shown only once any such order must have expired', async () => {
+    const env = new TestEnvironment();
+    const till = await env.startApp('cashier');
+    env.server.inject('createOrder', { type: 'gateway', code: 'timeout', applied: true });
+    const lost = intentOf(await till.controller.createOrder(PASTA));
+    assert.equal(lost.state, 'unknown');
+    assert.equal(await till.controller.closeUnshownOrder(lost.key), false); // may still be open
+
+    await env.advance(9 * 60_000);
+    assert.equal(await till.controller.closeUnshownOrder(lost.key), false);
+    await env.advance(2 * 60_000); // 5 min lifetime + 5 min margin after the last send have passed
+    assert.equal(await till.controller.closeUnshownOrder(lost.key), true);
+
+    // An order whose QR was shown never qualifies, even long after it was created.
+    const shown = intentOf(await till.controller.createOrder(PASTA));
+    assert.equal(shown.state, 'applied');
+    await env.advance(60 * 60_000);
+    assert.equal(await till.controller.closeUnshownOrder(shown.key), false);
     assert.equal(env.server.applied.createOrder, 2);
   });
 

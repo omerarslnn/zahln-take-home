@@ -15,6 +15,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <I18nProvider initialLocale={pickLocale(deviceLanguage)}>
+        {/* Default polling: a payment usually settles in seconds; checking stops after 3 minutes. */}
         <PaymentServicesProvider>
           <NavigationContainer>
             <RootNavigator />

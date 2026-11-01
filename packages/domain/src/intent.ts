@@ -35,6 +35,8 @@ interface IntentBase {
   maybeApplied: boolean;
   /** Server time (earliest bound) of the first attempt; anchors the server's 24 h key retention. */
   firstSentAt: number | null;
+  /** Server time (latest bound) of the most recent attempt; bounds when it can have been applied. */
+  lastSentAt: number | null;
   /** The last refusal code; with state 'rejected' it is the final answer. */
   refusal: string | null;
 }
@@ -80,6 +82,7 @@ export function newIntent(input: NewIntent, key: string, scope: Scope): IntentRe
     attempts: 0,
     maybeApplied: false,
     firstSentAt: null,
+    lastSentAt: null,
     refusal: null,
     resource: null,
     ...input,
@@ -93,6 +96,7 @@ export function beginAttempt(record: IntentRecord, now: ServerTime): IntentRecor
     state: 'submitting',
     attempts: record.attempts + 1,
     firstSentAt: record.firstSentAt ?? now.earliest,
+    lastSentAt: now.latest,
   };
 }
 
@@ -200,11 +204,46 @@ export function paymentDisplay(record: PayOrderIntent): PaymentDisplay {
   }
 }
 
-/** A known final result: the action is settled and a deliberate new one may follow. */
+/**
+ * A known final result: the action is settled and a deliberate new one may follow. For an order this
+ * means the checkout is over, not that the create request succeeded: an applied order is still being
+ * paid until the server says `paid` or `expired`, so the till keeps it and starts no other.
+ */
 export function isFinal(record: IntentRecord): boolean {
   if (record.state === 'rejected') return true;
   if (record.state !== 'applied') return false;
-  return record.kind === 'createOrder' || record.resource?.status !== 'pending';
+  switch (record.kind) {
+    case 'createOrder':
+      return record.resource?.status === 'paid' || record.resource?.status === 'expired';
+    case 'payOrder':
+    case 'refundPayment':
+      return record.resource?.status !== 'pending';
+  }
+}
+
+/** "The order can be paid until `expiresAt` (5 minutes)" (POST /orders). */
+export const ORDER_LIFETIME_MS = 5 * 60 * 1000;
+/** Extra time for a request that reached the server late (it can outlive the client's timeout). */
+const LATE_ARRIVAL_MARGIN_MS = 5 * 60 * 1000;
+
+/**
+ * Whether the till may close an order intent whose create response never arrived. Such an order,
+ * if it exists at all, was never shown: its QR came only in the lost response, and order IDs cannot
+ * be guessed, so nobody can have paid it. Once any order it may have created must have expired, by
+ * server time from its last attempt, closing it moves no money and frees the till. An order whose
+ * QR was shown (applied) never qualifies: it waits for `paid` or `expired`.
+ */
+export function canCloseUnshownOrder(record: IntentRecord, now: ServerTime | null): boolean {
+  if (
+    record.kind !== 'createOrder' ||
+    record.state === 'applied' ||
+    record.state === 'submitting'
+  ) {
+    return false;
+  }
+  if (!record.maybeApplied) return true; // every attempt was refused before anything happened
+  if (record.lastSentAt === null || now === null) return false; // when it was sent is unknown
+  return now.earliest >= record.lastSentAt + ORDER_LIFETIME_MS + LATE_ARRIVAL_MARGIN_MS;
 }
 
 /** Whether polling reads can still teach us something about this intent. */

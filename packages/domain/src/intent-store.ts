@@ -96,6 +96,8 @@ const base = {
   attempts: d.nonNegativeInteger,
   maybeApplied: d.boolean,
   firstSentAt: d.nullable(d.integer),
+  // Added in stage 3; records saved before it have none.
+  lastSentAt: d.withDefault(d.nullable(d.integer), null),
   refusal: d.nullable(d.string),
 };
 

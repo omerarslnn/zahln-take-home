@@ -1,0 +1,6 @@
+{
+  "ios": {
+    "NSCameraUsageDescription": "Mensa Pay verwendet die Kamera nur, um den QR-Code an der Kasse zu scannen.",
+    "NSFaceIDUsageDescription": "Mensa Pay verwendet Face ID, um deine Zahlungen zu bestätigen."
+  }
+}

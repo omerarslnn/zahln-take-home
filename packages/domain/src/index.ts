@@ -2,9 +2,20 @@
 // storage, key generation and timers are injected by each app (or by tests).
 export { compareAppVersions, parseAppVersion, type AppVersion } from './app-version';
 export {
+  addItem,
+  canAdd,
+  MAX_BASKET_LINES,
+  MAX_LINE_QUANTITY,
+  quantityOf,
+  removeItem,
+  type Basket,
+} from './basket';
+export {
+  canCloseUnshownOrder,
   isFinal,
   needsReads,
   newIntent,
+  ORDER_LIFETIME_MS,
   paymentDisplay,
   replayPermission,
   REPLAY_WINDOW_MS,
@@ -39,9 +50,23 @@ export {
   type BlockReason,
   type GateState,
 } from './payment-gate';
+export {
+  PaymentAuthorizer,
+  type AuthorizedOutcome,
+  type LocalAuthResult,
+  type PaymentBinding,
+} from './payment-authorization';
+export {
+  mergeHistory,
+  PaymentHistory,
+  type HistoryEntry,
+  type HistoryFailure,
+  type HistoryState,
+} from './payment-history';
 export type { PollingOptions, PollState } from './poller';
-export { parseOrderQr, type QrParseResult } from './qr';
+export { parseOrderCode, parseOrderQr, type QrParseResult } from './qr';
 export { ResourceCache } from './resource-cache';
+export { ScanLock } from './scan-lock';
 export { realScheduler, type Scheduler } from './scheduler';
 export { expiryState, ServerClock, type ExpiryState, type ServerTime } from './server-clock';
 export {
@@ -56,6 +81,8 @@ export {
 export { newerOf, type Versioned } from './versioning';
 export { classifyWrite, type AttemptOutcome, type WriteOperation } from './write-outcome';
 export type {
+  Mensa,
+  MenuItem,
   Order,
   OrderStatus,
   Payment,

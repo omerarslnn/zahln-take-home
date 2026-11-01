@@ -11,14 +11,23 @@
     "newArchEnabled": true,
     "ios": {
       "bundleIdentifier": "dev.omerarslan.mensa.till",
-      "supportsTablet": true
+      "supportsTablet": true,
+      "buildNumber": "2"
     },
     "android": {
       "package": "dev.omerarslan.mensa.till",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0F766E"
-      }
+      },
+      "versionCode": 2,
+      "blockedPermissions": [
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.SYSTEM_ALERT_WINDOW"
+      ]
     },
     "experiments": {
       "autolinkingModuleResolution": true

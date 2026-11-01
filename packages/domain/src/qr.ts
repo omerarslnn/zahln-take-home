@@ -23,3 +23,16 @@ export function parseOrderQr(scanned: string): QrParseResult {
   const orderId = match[1] ?? '';
   return ORDER_ID.test(orderId) ? { ok: true, orderId } : { ok: false, reason: 'invalid_order_id' };
 }
+
+/**
+ * A code typed by hand, for people who cannot aim a camera (or have not allowed it): the QR text,
+ * or just the order ID that the till prints under the QR. Anything else is refused, and the result
+ * is used the same way: as an ID to load from the configured API, never as a link or an amount.
+ */
+export function parseOrderCode(typed: string): QrParseResult {
+  const text = typed.trim();
+  if (/^zahln:/i.test(text)) return parseOrderQr(text);
+  return ORDER_ID.test(text)
+    ? { ok: true, orderId: text }
+    : { ok: false, reason: 'invalid_order_id' };
+}

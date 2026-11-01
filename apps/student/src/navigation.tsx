@@ -1,26 +1,72 @@
 import { useI18n } from '@mensa/shared/react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { ConnectionScreen } from './screens/ConnectionScreen';
+import { usePaymentServices } from './payments/PaymentServices';
+import { DiagnosticsScreen } from './screens/DiagnosticsScreen';
+import { HistoryScreen } from './screens/HistoryScreen';
 import { HomeScreen } from './screens/HomeScreen';
+import { PaymentDetailScreen } from './screens/PaymentDetailScreen';
+import { ResultScreen } from './screens/ResultScreen';
+import { ReviewScreen } from './screens/ReviewScreen';
+import { ScanScreen } from './screens/ScanScreen';
+import { SignInScreen } from './screens/SignInScreen';
 
-/** Every screen and its route parameters. Stage 2 adds Scan, Confirm, Result, History and Detail. */
+/** Every screen and its route parameters; TypeScript checks every `navigate` against this. */
 export type RootStackParamList = {
+  SignIn: undefined;
   Home: undefined;
-  Connection: undefined;
+  Scan: undefined;
+  Review: { orderId: string };
+  /** One payment action, by its intent key (never shown to the user). */
+  Result: { key: string };
+  History: undefined;
+  PaymentDetail: { paymentId: string };
+  Diagnostics: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-/** A native stack: platform push/pop transitions and back handling, like a navigation controller. */
+/**
+ * A native stack: platform push/pop transitions and back handling, like a navigation controller.
+ * The signed-in screens exist only while a session does: signing out or switching the account
+ * removes them (and their in-flight reads) and returns to the account choice.
+ */
 export function RootNavigator() {
   const { t } = useI18n();
+  const { user } = usePaymentServices();
   return (
     <Stack.Navigator>
-      <Stack.Screen name="Home" component={HomeScreen} options={{ title: t('student.nav.home') }} />
+      {user ? (
+        <>
+          <Stack.Screen name="Home" component={HomeScreen} options={{ title: t('nav.home') }} />
+          <Stack.Screen name="Scan" component={ScanScreen} options={{ title: t('nav.scan') }} />
+          <Stack.Screen
+            name="Review"
+            component={ReviewScreen}
+            options={{ title: t('nav.review') }}
+          />
+          <Stack.Screen
+            name="Result"
+            component={ResultScreen}
+            options={{ title: t('nav.result') }}
+          />
+          <Stack.Screen
+            name="History"
+            component={HistoryScreen}
+            options={{ title: t('nav.history') }}
+          />
+          <Stack.Screen
+            name="PaymentDetail"
+            component={PaymentDetailScreen}
+            options={{ title: t('nav.paymentDetail') }}
+          />
+        </>
+      ) : (
+        <Stack.Screen name="SignIn" component={SignInScreen} options={{ title: t('nav.signIn') }} />
+      )}
       <Stack.Screen
-        name="Connection"
-        component={ConnectionScreen}
-        options={{ title: t('student.nav.connection') }}
+        name="Diagnostics"
+        component={DiagnosticsScreen}
+        options={{ title: t('nav.diagnostics') }}
       />
     </Stack.Navigator>
   );

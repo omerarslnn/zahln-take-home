@@ -7,6 +7,7 @@ import type {
   CreateRefund,
   IdempotencyKey,
   LoginRequest,
+  MensaList,
   Order,
   Payment,
   PaymentDetail,
@@ -42,8 +43,14 @@ export type CallResult<T> =
 export type SignInResult =
   { ok: true; user: User } | { ok: false; reason: SessionFailure | 'superseded' };
 
+/**
+ * The session has ended. The contract names `session_expired`, but the live API answers a token that
+ * has been expired for about a minute with plain `401 unauthorized` (observed 2026-11-01), so both
+ * mean "log in again". A 401 means the server did nothing, so repeating the same call is safe.
+ */
 const isSessionExpired = (result: ApiResult<unknown>) =>
-  result.kind === 'problem' && result.problem.code === 'session_expired';
+  result.kind === 'problem' &&
+  (result.problem.code === 'session_expired' || result.problem.code === 'unauthorized');
 
 /**
  * Owns the signed-in account and its bearer token (memory only, never persisted or logged).
@@ -181,6 +188,8 @@ export class SessionCoordinator {
 export interface ScopedApi {
   /** Unauthenticated; also refreshes the server clock through the transport. */
   getConfig(): Promise<ApiResult<AppConfig>>;
+  /** Mensas, their tills and menus with the price of each group. */
+  listMensas(): Promise<CallResult<MensaList>>;
   createOrder(body: CreateOrder, key: IdempotencyKey): Promise<CallResult<Order>>;
   getOrder(orderId: string): Promise<CallResult<Order>>;
   createPayment(
@@ -204,6 +213,7 @@ export function createScopedApi(
 ): ScopedApi {
   return {
     getConfig: () => client.getConfig(),
+    listMensas: () => session.run(userId, (token) => client.listMensas(token)),
     createOrder: (body, key) =>
       session.run(userId, (token) => client.createOrder(token, body, key)),
     getOrder: (orderId) => session.run(userId, (token) => client.getOrder(token, orderId)),

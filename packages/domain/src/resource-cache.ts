@@ -15,24 +15,33 @@ export class ResourceCache {
   private readonly payments = new Map<string, Payment>();
   private readonly details = new Map<string, PaymentDetail>();
 
+  /** `onChange` runs when a put actually replaced what is stored (not for an ignored stale copy). */
+  constructor(private readonly onChange: () => void = () => undefined) {}
+
   /** Orders also accept an expiry at an equal version (see `isLaterOrderState`). */
   putOrder(order: Order): Order {
     const known = this.orders.get(order.id);
     const kept = !known || isLaterOrderState(known, order) ? order : known;
-    this.orders.set(order.id, kept);
+    this.store(this.orders, order.id, kept);
     return kept;
   }
 
   putPayment(payment: Payment): Payment {
     const kept = newerOf(this.payments.get(payment.id), payment);
-    this.payments.set(payment.id, kept);
+    this.store(this.payments, payment.id, kept);
     return kept;
   }
 
   /** Stores the detail projection and updates the summary from it. Returns the newest summary. */
   putPaymentDetail(detail: PaymentDetail): Payment {
-    this.details.set(detail.id, newerOf(this.details.get(detail.id), detail));
+    this.store(this.details, detail.id, newerOf(this.details.get(detail.id), detail));
     return this.putPayment(detail);
+  }
+
+  private store<T>(map: Map<string, T>, id: string, value: T): void {
+    if (map.get(id) === value) return;
+    map.set(id, value);
+    this.onChange();
   }
 
   order(id: string): Order | undefined {
