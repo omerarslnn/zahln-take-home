@@ -12,7 +12,7 @@ import {
   priceGroupKey,
   refundStatusText,
 } from './payment-text';
-import { StatusBadge } from './ui';
+import { StatusBadge, useAnnouncement } from './ui';
 
 export function PaymentDetails({
   payment,
@@ -25,6 +25,8 @@ export function PaymentDetails({
 }) {
   const { t, locale } = useI18n();
   const status = paymentStatusText(payment.status);
+  // E.g. pending → confirmed while the screen refreshes: said once, not on every refresh.
+  useAnnouncement(t(status.key), true);
   return (
     <>
       <Card>

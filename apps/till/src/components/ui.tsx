@@ -2,6 +2,7 @@
 // identical copy. Every status has a glyph and words, never colour alone; every control is at least
 // 48 dp.
 import { colors } from '@mensa/shared';
+import { useIsFocused } from '@react-navigation/native';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   AccessibilityInfo,
@@ -136,17 +137,29 @@ export function Body({ children, muted }: { children: ReactNode; muted?: boolean
 }
 
 /**
- * Says `message` to the screen reader when it changes to a new non-empty value, for important
- * results only (a payment's outcome, a refund's state); never for every polling tick. With
- * `changesOnly`, the value shown when the screen opens is not announced, only later changes.
+ * Says `message` to the screen reader once when it changes to a new non-empty value: a payment's
+ * outcome, a refund's state, payments being paused. Never for every polling tick, because an
+ * unchanged message is not repeated. Only while this screen is focused: a change on a screen
+ * underneath (the checkout behind the payments list) is not spoken over the screen in front, and
+ * not saved up for later. With `changesOnly`, what the screen showed when it opened is the
+ * baseline, not news; its heading and focus present it.
+ *
+ * This is the one announcement path on both platforms: announceForAccessibility reaches VoiceOver,
+ * which has no live regions, and TalkBack. A message spoken here must not also sit in an Android
+ * live region, or TalkBack says it twice.
  */
 export function useAnnouncement(message: string | null, changesOnly = false): void {
+  const focused = useIsFocused();
   const last = useRef<string | null>(changesOnly ? message : null);
   useEffect(() => {
-    if (!message || message === last.current) return;
+    if (!message) {
+      last.current = null; // gone; if it comes back, that is news again
+      return;
+    }
+    if (message === last.current) return;
     last.current = message;
-    AccessibilityInfo.announceForAccessibility(message);
-  }, [message]);
+    if (focused) AccessibilityInfo.announceForAccessibility(message);
+  }, [message, focused]);
 }
 
 /** Moves screen-reader focus to the element when `key` changes, e.g. to a new result heading. */

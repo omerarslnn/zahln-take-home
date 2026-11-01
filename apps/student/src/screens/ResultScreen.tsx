@@ -64,8 +64,10 @@ export function ResultScreen({ route, navigation }: Props) {
   const record = controller?.get(key);
   const intent = record?.kind === 'payOrder' ? record : undefined;
   const outcome = intent ? describeOutcome(intent) : null;
-  const headingRef = useAccessibilityFocus<Text>(outcome?.title ?? null);
-  useAnnouncement(outcome ? t(outcome.title) : null);
+  // Focus goes to the heading once, which reads the first outcome; later changes (checking →
+  // paid) are announced instead, so the same words are never spoken twice.
+  const headingRef = useAccessibilityFocus<Text>(outcome ? key : null);
+  useAnnouncement(outcome ? t(outcome.title) : null, true);
 
   if (!controller) {
     return (

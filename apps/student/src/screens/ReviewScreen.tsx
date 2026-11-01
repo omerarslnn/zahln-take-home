@@ -13,9 +13,17 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 import { Card, LabelledValue } from '../components/Foundation';
-import { gateMessage } from '../components/PaymentAvailability';
+import { gateAnnouncement, gateMessage } from '../components/PaymentAvailability';
 import { priceGroupKey } from '../components/payment-text';
-import { Body, Button, Notice, Screen, useAccessibilityFocus, type Tone } from '../components/ui';
+import {
+  Body,
+  Button,
+  Notice,
+  Screen,
+  useAccessibilityFocus,
+  useAnnouncement,
+  type Tone,
+} from '../components/ui';
 import { authenticateLocally } from '../local-auth';
 import type { RootStackParamList } from '../navigation';
 import { notAllowedText } from '../payment-outcome';
@@ -65,6 +73,8 @@ export function ReviewScreen({ route, navigation }: Props) {
     };
   });
   const summaryRef = useAccessibilityFocus<View>(order ? order.id : null);
+  // Payments paused (or an update needed) while the payer reviews an open order: said once.
+  useAnnouncement(order?.status === 'open' ? gateAnnouncement(gate, t) : null, true);
 
   // This payer's earlier action for this order: an unresolved one is resumed, never duplicated.
   const existing = (controller?.list() ?? [])

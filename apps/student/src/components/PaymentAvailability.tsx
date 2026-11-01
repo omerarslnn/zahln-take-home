@@ -7,7 +7,7 @@ import { useI18n } from '@mensa/shared/react';
 import { Text, View } from 'react-native';
 import { usePaymentGate } from '../payments/PaymentServices';
 import { Card } from './Foundation';
-import type { Tone } from './ui';
+import { useAnnouncement, type Tone } from './ui';
 
 const DOT: Record<Tone, string> = {
   ok: 'bg-success',
@@ -17,18 +17,33 @@ const DOT: Record<Tone, string> = {
   neutral: 'bg-line',
 };
 
-/** The gate state in words; announced politely when it changes (e.g. payments get paused). */
+/** The gate state in words; a block that starts while the screen is open is announced. */
 export function PaymentAvailability() {
   const { t } = useI18n();
-  const { tone, key, params } = gateMessage(usePaymentGate());
+  const gate = usePaymentGate();
+  const { tone, key, params } = gateMessage(gate);
+  useAnnouncement(gateAnnouncement(gate, t), true);
   return (
     <Card title={t('payments.title')}>
-      <View accessible accessibilityLiveRegion="polite" className="flex-row items-start gap-3">
+      <View accessible className="flex-row items-start gap-3">
         <View className={`mt-1.5 h-3 w-3 rounded-full ${DOT[tone]}`} />
         <Text className="flex-1 text-base text-ink">{t(key, params)}</Text>
       </View>
     </Card>
   );
+}
+
+/**
+ * What to say when payments stop being possible (paused, update needed); null while they are open
+ * or being checked, because "checking… available" on every screen visit is not news.
+ */
+export function gateAnnouncement(
+  gate: GateState | null,
+  t: (key: MessageKey, params?: MessageParams) => string,
+): string | null {
+  if (gate?.status !== 'blocked') return null;
+  const { key, params } = gateMessage(gate);
+  return t(key, params);
 }
 
 export function gateMessage(gate: GateState | null): {

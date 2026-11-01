@@ -66,6 +66,8 @@ export function ScanScreen({ navigation }: Props) {
   // it is never left running behind the review or the payment prompt.
   const cameraOn = focused && appActive && permission?.granted === true && problem === null;
   useAnnouncement(cameraOn ? t('scan.cameraOn') : null);
+  useAnnouncement(problem ? t(`scan.problem.${problem}`) : null);
+  useAnnouncement(typedInvalid ? t('scan.problem.invalid_order_id') : null);
 
   return (
     <Screen>
@@ -127,7 +129,7 @@ export function ScanScreen({ navigation }: Props) {
           className="min-h-touch rounded-control border-2 border-line bg-surface px-3 text-base text-ink"
         />
         {typedInvalid ? (
-          <Text accessibilityLiveRegion="polite" className="text-base font-semibold text-danger">
+          <Text className="text-base font-semibold text-danger">
             {t('scan.problem.invalid_order_id')}
           </Text>
         ) : null}
