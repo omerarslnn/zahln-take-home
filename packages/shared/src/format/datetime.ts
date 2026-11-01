@@ -20,6 +20,17 @@ export function formatBerlinDateTime(instant: Date | string, locale: Locale): st
   }).format(new Date(instant));
 }
 
+/** Berlin time of day with seconds, e.g. "15:31:05", for "last fetched" labels. */
+export function formatBerlinTime(instant: Date | string, locale: Locale): string {
+  return new Intl.DateTimeFormat(DATE_LOCALES[locale], {
+    timeZone: FINANCE_TIME_ZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).format(new Date(instant));
+}
+
 /**
  * The calendar day (YYYY-MM-DD) of an instant in Berlin, as GET /reports/daily-totals expects.
  * Near midnight this differs from the UTC date: 23:30 UTC on 28 March is already 29 March in Berlin.

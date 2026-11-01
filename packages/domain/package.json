@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./finance": "./src/finance/index.ts"
   },
   "scripts": {
     "order-probe": "tsx scripts/order-probe.ts",
