@@ -28,23 +28,44 @@ All steps passed on the first attempt. **No injected slowness or failure was obs
 That says nothing about how the server behaves under its documented failure modes. No hidden chaos
 controls are assumed.
 
-## Live writes so far (2026-10-31)
+## Live writes ledger
 
-The only writes ever sent to the API are **two `POST /orders`** as the seeded cashier
-`cashier-campus-1` (1 × the first menu item of its mensa), sent by `pnpm api:order-probe` to observe
-the QR format. **No payment and no refund has been sent.** Payment and refund writes exist only
-against the simulated server in the tests.
+Every write ever sent to the mock (candidate `c_5b3ceacafb`). All went through the intent mechanism:
+saved with its idempotency key before sending, reused on a retry. Local evidence: `.local/` (git-ignored).
 
-One order was intended. The second came from a bug: the first run saved its intent with a fractional
-`firstSentAt` (from `performance.now()`), the second run could not read that record back and, at the
-time, treated the store as empty, so it created a new order with a new key. Fixes: the server clock
-returns whole milliseconds, the controller refuses every new action while any saved record of the
-user is unreadable, and the test harness uses a fractional monotonic clock so the tests catch it (see
-[progress.md](progress.md)). A later run with the unreadable records was refused, as intended; after
-the two local records were repaired by hand (`firstSentAt` floored), the next run only read.
+| When (Berlin)     | Who                       | Write                                                   | Resource                                       | Result                                         |
+| ----------------- | ------------------------- | ------------------------------------------------------- | ---------------------------------------------- | ---------------------------------------------- |
+| 2026-10-31 11:3x  | cashier-campus-1          | order (probe)                                           | 2 orders, see below                            | both expired unpaid (v1)                       |
+| 2026-10-31 ~18:59 | cashier-campus-1, student | order + payment (`pnpm api:payment-probe`)              | `ord_71832f7697fe562d`, `pay_650a13b0311ad6fe` | confirmed, 250 cents (student)                 |
+| 2026-10-31 22:27  | cashier-campus-2          | order (till app, iteration build)                       | `ord_5dda3faa7e8d5ab4`                         | expired unpaid (used for the price-group read) |
+| 2026-11-01 11:53  | cashier-campus-2, staff   | order + payment (till and student apps, release builds) | `ord_ebb99f6c6bd7186a`, `pay_90d914f2be37a714` | confirmed, 580 cents (staff)                   |
+| 2026-11-01 12:06  | cashier-campus-2          | partial refund (till app)                               | `ref_c8c9e73384687eb4`                         | completed, 100 cents                           |
+| 2026-11-01 12:07  | cashier-campus-2          | full refund of the rest (till app)                      | `ref_4845b3bdc2c7cc3c`                         | completed, 480 cents                           |
 
-Both orders expired unpaid: read back as the cashier on 2026-10-31, each is `expired`, version 1,
-without a payment.
+The two 2026-10-31 probe orders: one was intended. The second came from a bug: the first run saved
+its intent with a fractional `firstSentAt` (from `performance.now()`), the second run could not read
+that record back and, at the time, treated the store as empty, so it created a new order with a new
+key. Fixes: the server clock returns whole milliseconds, the controller refuses every new action while
+any saved record of the user is unreadable, and the test harness uses a fractional monotonic clock
+so the tests catch it (see [progress.md](progress.md)).
+
+## Stage 3 observations (2026-10-31 and 2026-11-01)
+
+- **Payment settlement grows the version** (the open question from stage 2). Probe payment:
+  `pending v1` (write response) → `pending v1` (read) → `confirmed v2`; its order (cashier view)
+  `open v1` → `paying v2` → `paid v3`. App payment: `confirmed v2`, history `payment_created` →
+  `payment_confirmed`. No equal-version rule is needed for payments; none was added.
+- **Refunds grow the parent payment's version**: v2 (confirmed) → v3 refund requested → v4 refund
+  completed → v5 → v6 for the second refund. The payment stays `confirmed`; `refundableAmountCents`
+  went 580 → 480 → 0 and `refundedAmountCents` 0 → 100 → 580. Both refunds completed within seconds.
+- **One order, three prices**: `ord_5dda3faa7e8d5ab4` read by the three seeded payers while open:
+  student 340, staff 580, guest 750 cents; the till's cashier view (`amounts`) listed the same.
+- **Expired orders stay readable by payers** (200, status `expired`, version unchanged).
+- **An expired token is not always `session_expired`**: a token read 5.2 minutes after sign-in got
+  `401 session_expired`; at 6 minutes the same token got `401 unauthorized`. The contract and the
+  brief only promise `session_expired`. Found because the till's payment list failed after the
+  cashier had been idle for about 7 minutes; the session coordinator now logs in again on either code
+  (a 401 means the server did nothing, so the repeat is safe).
 
 ## Observed formats (2026-10-31)
 
@@ -97,15 +118,14 @@ max-age keeps the extra round trip to roughly one per endpoint every 10 minutes.
    `retryable` is not used to decide whether a write happened.
 6. **Sessions**: tokens last 5 minutes, there is no refresh token and no logout endpoint, so re-login
    needs the credentials again. `SessionCoordinator` keeps the seeded account's password in memory and
-   logs the same account in again on `401 session_expired`. **That is a mock-specific mechanism**; a
-   production app would need refresh tokens or a device-bound credential.
+   logs the same account in again on `401 session_expired`, and on `401 unauthorized`, which the live
+   API answers once a token has been expired for a while (observation 11). **That is a mock-specific
+   mechanism**; a production app would need refresh tokens or a device-bound credential.
 7. **Order expiry does not grow `version`** (seen on both probe orders: `open` v1 → `expired` v1). The
    contract says `Order.version` "grows with every change". The client accepts exactly this change at
    an equal version (`isLaterOrderState` in `packages/domain/src/versioning.ts`) and nothing else, so a
-   stale `open` read still cannot replace `expired`. **Open:** whether payment settlement
-   (`pending` → `confirmed`/`declined`) grows the payment's version has not been observed, because no
-   live payment has been made. Check it with the first real payment; if it does not, the same kind of
-   rule is needed for payments.
+   stale `open` read still cannot replace `expired`. Payment settlement and refunds do grow the version
+   (stage 3 observations above).
 8. **`q` on `GET /payments` is a prefix search** ("Payment ID, order ID or payer ID, or the start of
    one"). Any screen that searches must check hits for an exact match.
 9. **No resource carries its idempotency key, and nothing can be looked up by key.** So a read cannot
@@ -121,6 +141,10 @@ max-age keeps the extra round trip to roughly one per endpoint every 10 minutes.
     be pending, `paid` is final ("paid", no way back) and "only `confirmed` means the payer has paid".
     So the payer's attempt did not pay the order. The app says exactly that ("paid by another payer;
     your attempt did not pay it"), and nothing more.
+
+11. **Expired sessions answer `401 unauthorized`** after about a minute, not `session_expired` (see
+    the stage 3 observations). A client that follows the documented code alone stops working after a
+    short idle period.
 
 ## Notes the payment design depends on
 
@@ -159,4 +183,5 @@ max-age keeps the extra round trip to roughly one per endpoint every 10 minutes.
 - Offer an exact `orderId` filter on `GET /payments` next to the prefix search.
 - Give reports a version or ETag and a generated-at timestamp; offer a server-side CSV export.
 - Specify the `qrPayload` format and add a signature or checksum, so a scanner can reject foreign codes.
+- Answer every request with an ended session with `401 session_expired`, as documented.
 - Add refresh tokens and a request ID header; make step-up payment authorization server-verifiable.

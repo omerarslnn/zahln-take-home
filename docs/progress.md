@@ -205,7 +205,7 @@ Disk: 7.0 GB free before the builds, 3.0 GB after three builds, Expo Go and the 
 after removing about 1.5 GB of regenerated Gradle/CMake output (the generated `android/` project and
 its `debug.keystore` were kept).
 
-## Stage 3: usable student and till apps (2026-10-31, in progress)
+## Stage 3: usable student and till apps (2026-10-31 to 2026-11-01)
 
 ### Checkpoint 1: recovery cannot attribute an earlier attempt to a newer one
 
@@ -235,54 +235,148 @@ history settles, and that keeps blocking another refund. 84/84 tests pass.
 **Mutation run** (23 single-point bugs against this code): all killed, including the stage 2
 survivor (removing the payer check), which the hostile fixture now reaches.
 
+### Checkpoint 2: one live payment early (2026-10-31)
+
+`pnpm api:payment-probe` (opt-in, resumes instead of repeating) rang up one order as
+`cashier-campus-1` and paid it as `student` through the intent controller: `ord_71832f7697fe562d`,
+`pay_650a13b0311ad6fe`, 250 cents. Raw reads (not through the cache): payment `pending v1` → `pending
+v1` → `confirmed v2`; order `open v1` → `paying v2` → `paid v3`. So settlement grows the version, and
+no equal-version rule for payments was added. Ledger and later observations: [api-notes.md](api-notes.md).
+
+### Checkpoint 3: the apps
+
+What was built (details in [architecture.md](architecture.md), "The apps"):
+
+- **Student**: seeded-account sign-in; home with availability and the user's payment actions; QR scan
+  (expo-camera) with a synchronous scan lock and a typed-code alternative; review with the server's
+  amount, server-time expiry and every order state; local authorization (expo-local-authentication,
+  device PIN fallback) bound to user, order, amount and review; truthful result with read-only check
+  and same-key resend; paginated history merged with unresolved actions; payment detail with refunds
+  and history; diagnostics.
+- **Till**: seeded-cashier sign-in; menu with per-group prices; basket within the contract limits;
+  order intent with its QR (drawn with `qrcode`), countdown and server totals per group; the checkout
+  stays until `paid` or `expired`, across restarts; paid result with the payer's amount and price
+  group; payments list with ID search; detail with full and partial refunds, cents parsing, explicit
+  confirmation and one refund action at a time.
+- **Domain additions**: `PaymentAuthorizer`, `ScanLock`, `PaymentHistory`/`mergeHistory`, basket
+  rules, `parseOrderCode`, `parseEuroAmount`, checkout finality, `canCloseUnshownOrder`, `lastSentAt`,
+  `checkAgain`, a change counter for stable React snapshots, `ScopedApi.listMensas`, re-login on
+  `401 unauthorized`.
+
+### Verification
+
+| Check                                                                                   | Kind           | Result                      | Evidence / notes                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| --------------------------------------------------------------------------------------- | -------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm check` (Prettier, ESLint, typecheck ×6, tests, single instances, dashboard build) | source/build   | passed                      | Final run 2026-11-01. Dashboard bundle 238 kB JS (75 kB gzip): the shared message catalogue grew.                                                                                                                                                                                                                                                                                                                                      |
+| Unit and orchestration tests                                                            | tests          | passed (101/101, 31 suites) | Simulated server at the `fetch` level; includes the recovery regressions, hostile responses, authorization binding, scan lock, history pages and merge, checkout lifecycle, refunds, cents parsing and expired-session re-login.                                                                                                                                                                                                       |
+| Mutation checks (35 single-point bugs)                                                  | mutation       | 35 killed                   | Stage 2's 23 (recovery list updated) plus checkout finality, unshown-order close, authorization account/amount/lock, scan lock, basket limit, history merge and late page, session `unauthorized`, two cents-parsing rules. A suite hang counts as caught (the authorization-lock test was then changed to fail fast).                                                                                                                 |
+| `pnpm bundle:native` (iOS + Android, both apps)                                         | bundle         | passed                      | Hermes bytecode, 3.6 MB each.                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `expo install --check`, `expo-doctor` 1.21.5                                            | source         | passed (both apps, 18/18)   | expo-camera 17.0.10, expo-local-authentication 17.0.9, react-native-screens 4.16.0 match SDK 54.                                                                                                                                                                                                                                                                                                                                       |
+| Release APKs (student `8a8c581`, till `a8bf5aa`)                                        | build          | passed                      | Four APKs (arm64 and two-ABI, both apps); versions, ABIs, SHA-256 and the shared signing certificate in the table below. minSdk 24 (Android 7.0, so Android 10 is covered), targetSdk 36. The till was rebuilt after problem 9; the student app's source has not changed since `8a8c581`.                                                                                                                                              |
+| APK permissions                                                                         | build          | checked                     | Student: CAMERA, INTERNET, USE_BIOMETRIC, USE_FINGERPRINT, VIBRATE, ACCESS_NETWORK_STATE (+ an androidx-internal receiver permission). Till: INTERNET, VIBRATE (+ the same). No microphone or storage.                                                                                                                                                                                                                                 |
+| Live payment through both apps (Android 16 emulator, release builds, no Metro)          | live + runtime | passed                      | Till created `ord_ebb99f6c6bd7186a`; its on-screen QR decoded (macOS CoreImage) to `zahln://pay?order=ord_ebb99f6c6bd7186a`. Student (staff) typed the code (camera denied), reviewed €5.80, then: no screen lock → "no screen lock" and nothing sent; PIN set → prompt cancelled → "Not paid" and nothing sent; PIN entered → paid. Result "Paid", till "Paid €5.80 at the Staff price". Payment `pay_90d914f2be37a714` confirmed v2. |
+| Live refunds (till app)                                                                 | live + runtime | passed                      | "1,234" and "10" refused in the form; partial 1,00 → `ref_c8c9e73384687eb4` completed; "Refund everything left" 4,80 → `ref_4845b3bdc2c7cc3c` completed; then "Nothing is left to refund". Payment v6, refundable 0. The payer's detail shows both refunds and the six history events.                                                                                                                                                 |
+| Camera permission on the release build                                                  | runtime        | passed                      | First denial: "Allow camera" offered again; second denial (USER_FIXED): "Camera access is off", "Open settings".                                                                                                                                                                                                                                                                                                                       |
+| Price groups for one open order                                                         | live           | passed                      | student 340, staff 580, guest 750 cents (read-only), same as the till's server totals.                                                                                                                                                                                                                                                                                                                                                 |
+| Checkout after a process restart (till reinstalled over itself)                         | runtime        | passed                      | The paid order intent came back from SecureStore and, with the `8a8c581` build, loads its order by itself.                                                                                                                                                                                                                                                                                                                             |
+| Expired-session behaviour                                                               | live           | discrepancy found           | 401 `session_expired` at 5.2 min, 401 `unauthorized` at 6 min; fixed in `SessionCoordinator` (see problem 5).                                                                                                                                                                                                                                                                                                                          |
+| Idle till after the fix (`8a8c581` APK)                                                 | live + runtime | passed                      | Signed in at 12:24:25 and left idle; "Payments and refunds" at 12:31:50 (7 min 25 s) loaded the list on the first try. A release build logs nothing, so the re-login itself was not observed; the token was past both the 5-minute expiry and the 6-minute point where the API answered `unauthorized`.                                                                                                                                |
+| Till at tablet width (emulator at density 200, 864 dp wide)                             | runtime        | passed after a fix          | Menu and order panel side by side, cashier accounts in two columns. The accessibility tree (uiautomator) put the order panel between the first menu rows (problem 9); with the `a8bf5aa` APK the whole menu column comes first, then the order panel. TalkBack itself not run.                                                                                                                                                         |
+| Display density change while signed in                                                  | runtime        | observed                    | Android recreated the screen in the same process; the till came back at sign-in because the session lives in memory only, and worked normally after signing in. Font size and system language are not among the manifest's handled `configChanges` either, so they should behave the same (not tested).                                                                                                                                |
+| German UI                                                                               | runtime        | passed (spot check)         | Student home in German; strings for all screens typed against the English catalogue.                                                                                                                                                                                                                                                                                                                                                   |
+| Physical Pixel XL (Android 10), iPad, iPhone                                            | runtime        | **not run**                 | No physical device was connected (`adb devices` empty); see [manual-tests.md](manual-tests.md).                                                                                                                                                                                                                                                                                                                                        |
+| Fingerprint, Android 10 PIN fallback, Face ID                                           | runtime        | **not run**                 | The emulator had no enrolled fingerprint; the device PIN path was exercised there. Fingerprint and the Android 10 behaviour need the Pixel; Face ID needs an iPhone development build.                                                                                                                                                                                                                                                 |
+| TalkBack / VoiceOver                                                                    | runtime        | **not run**                 | Labels, roles, headings, announcements and focus moves are in the code; no screen reader was run.                                                                                                                                                                                                                                                                                                                                      |
+| OS process kill with an unknown payment                                                 | runtime        | **not run**                 | Simulated in tests (new controller, same store). The till restart above was a real process restart, but with a settled order.                                                                                                                                                                                                                                                                                                          |
+| Live 426 / 503 / slow responses                                                         | live           | **not run**                 | No remote control for these exists; covered by simulated tests only.                                                                                                                                                                                                                                                                                                                                                                   |
+
+| APK (artifacts/android/)                                  | Version (code) | ABI                    | SHA-256                                                            |
+| --------------------------------------------------------- | -------------- | ---------------------- | ------------------------------------------------------------------ |
+| `mensa-student-1.0.0-2-arm64-v8a-8a8c581.apk`             | 1.0.0 (2)      | arm64-v8a              | `6dd60e2ad392f14f7ca2f32917d62316f5987ea0044860a0a161b356b6a6e374` |
+| `mensa-student-1.0.0-2-armeabi-v7a+arm64-v8a-8a8c581.apk` | 1.0.0 (2)      | armeabi-v7a, arm64-v8a | `6221d6f29aa76b9b5d8d7639f67cb9b794ab3fc3dae748715bc14dda38c649f3` |
+| `mensa-till-1.0.0-2-arm64-v8a-a8bf5aa.apk`                | 1.0.0 (2)      | arm64-v8a              | `4f9806d917510287bc4e98a2b5b828d40ca9594d8810808a6ea69c77fdc06be9` |
+| `mensa-till-1.0.0-2-armeabi-v7a+arm64-v8a-a8bf5aa.apk`    | 1.0.0 (2)      | armeabi-v7a, arm64-v8a | `4ea03bd389a38e92b044297683b685e43de37250a8b3aefafa62d3a6c89458d9` |
+
+All four are signed with the same certificate as the stage 2 student APK (SHA-256
+`fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`, the React Native template debug
+key), so they install over it with `adb install -r` and keep its saved data. The till APKs built from
+`8a8c581` (`fb48429d…`, `7cf9f7ad…`) are still in `artifacts/android/` but lack the fix for problem 9.
+
+### Problems found by verification, and fixes
+
+1. **Blank student screens.** Every student screen rendered empty on Android, without an error. Found
+   by bisecting in Expo Go: NativeWind did not apply classes to `KeyboardAvoidingView`, so the
+   screen wrapper collapsed to zero height. The wrapper now uses a plain style.
+2. **A second NativeWind copy.** Adding `react-native-svg` to the till (an optional peer of
+   `react-native-css-interop`) made pnpm create a second css-interop and NativeWind copy. React
+   Native's own components resolved one copy, app code the other, and list paddings disappeared in
+   the student app. The till now draws its QR with plain Views, svg is gone, and `pnpm check` fails
+   if react, react-native, react-native-css-interop or nativewind exists twice.
+3. **Microphone and unused permissions.** `recordAudioAndroid: false` did not remove RECORD_AUDIO
+   (expo-camera's library manifest declares it), and the till inherited biometric permissions from
+   androidx.biometric. `android.blockedPermissions` in each `app.json` removes them, plus the
+   template's storage and overlay permissions.
+4. **Android lint failure.** iOS usage descriptions in `locales/*.json` became Android string
+   resources without a default; they now sit under the `ios` key.
+5. **Idle sessions.** The till's payment list failed three times with a generic error after about
+   seven idle minutes. The release build logs nothing, so the failing responses were not seen, but
+   the timing matches a live observation: a token expired for about a minute is answered with
+   `401 unauthorized`, not the documented `session_expired`. The coordinator now logs in again on
+   both (new test, mutation-checked), and the same idle test with the `8a8c581` APK loaded the list.
+6. **A restored checkout waited for "Check again".** After a restart a paid or expired order is not
+   polled and the cache is empty; the panel now reads it once by itself.
+7. **Wording**: a pending refund was described as "no answer yet"; a paid amount was labelled
+   "Amount to pay". Both fixed.
+8. **Recovery could attribute an earlier attempt** (checkpoint 1 above).
+9. **Screen-reader order on the tablet layout.** Android leaves plain containers out of the
+   accessibility tree and sorts their contents by screen position, so in the till's two-column
+   checkout the order panel (heading, hint, "Create order and show QR code") fell between the first
+   menu rows. Each column is now kept as a group (`collapsable={false}`,
+   `importantForAccessibility="yes"`, commit `a8bf5aa`). iOS needed no change: React Native's views
+   return `shouldGroupAccessibilityChildren = YES` for VoiceOver.
+10. Smaller: the scanner re-reads the camera permission when the app returns from Settings; the QR
+    library with a burst of eight releases in four days was avoided in favour of `qrcode` 1.5.4.
+
+Emulator automation notes (not app bugs): the emulator lost installed apps between restarts; Gboard's
+stylus tutorial captured `adb input text` (fixed with `settings put secure stylus_handwriting_enabled
+0` on the emulator); uiautomator dumps were stale while the till re-renders its countdown, so
+screenshots were used instead. The density check above was undone with `wm density reset`.
+
+Disk: 88 GiB free on the home volume at the end of stage 3 (`df -h /`, 2026-11-01); nothing was
+removed in this stage.
+
 ## Manual steps
 
 1. **pnpm on PATH**: `corepack enable pnpm` (undo: `corepack disable pnpm`), or prefix commands with
    `corepack`.
-2. **System Node (optional)**: project scripts already run on Node 24.22.2. pnpm itself, `pnpm dlx`
-   and direct binary calls still use Homebrew's Node 23.11, which is end-of-life. To change that,
-   install Node 24 system-wide (for example `brew install node@24`, then put it first on PATH in
-   your shell profile) or a version manager that reads `.nvmrc`. This is a global change, so it is your
-   call.
-3. **Gradle JDK pin**: `~/.gradle/gradle.properties` line 1 pins
-   `org.gradle.java.home=/Library/Java/JavaVirtualMachines/temurin-11.jdk/Contents/Home`. `pnpm apk:*`
-   overrides it; plain `./gradlew`, Android Studio and `expo run:android` still get JDK 11. Change or
-   remove the line only if no other project needs it.
-4. **Review APK**: `pnpm apk:student` (both ABIs) writes
-   `artifacts/android/mensa-student-1.0.0-armeabi-v7a+arm64-v8a.apk`. Only the arm64 build exists so
-   far. `artifacts/android/mensa-student-0.1.0-arm64-v8a.apk` is obsolete (below `minAppVersion`).
-5. **Order probe**: `ZAHLN_SMOKE_PASSWORD=<seeded password> pnpm api:order-probe`. It reuses its saved
-   intent in `.local/order-probe-intents.json`, so a re-run only reads. Deleting that file makes the
-   next run create a new live order.
-6. **Android tablet emulator**: install Android Studio → Device Manager → create a tablet device
-   (e.g. Pixel Tablet) with the already installed API 36.1 arm64 Google Play image.
-7. **iPhone 17 Pro**: Xcode → Settings → Accounts → add your Apple ID (a free personal team works;
-   profiles last 7 days). On the phone, enable Developer Mode (Settings → Privacy & Security). Then
-   `cd apps/student && pnpm exec expo run:ios --device` (generates `ios/`, runs CocoaPods, needs
-   several GB). If the bundle ID is taken for your team, change `ios.bundleIdentifier` in `app.json`.
-8. **Android phone (if borrowed)**: enable USB debugging, then `adb install -r` the APK.
-9. **Disk**: 4.2 GB free. The phone emulator's data (`~/.android/avd/Medium_Phone.avd`, 5.4 GB) is
-   the largest reclaimable item (Device Manager → Wipe Data); Expo's caches in `~/.expo` hold 1.2 GB.
-   Both are outside the project and were not touched.
-10. **Accounts**: the private GitHub repository exists (`omerarslnn/zahln-take-home`); invite the
-    reviewers when ready. A dashboard host (e.g. Vercel, Netlify or Cloudflare Pages) and, optionally,
-    an Expo account for EAS are not set up.
+2. **Seeded password**: put the password from the OpenAPI description's "Seeded logins" table into
+   `EXPO_PUBLIC_SEEDED_PASSWORD` in `apps/student/.env` and `apps/till/.env` (git-ignored) before
+   building or starting Metro. It is public mock data, inlined into the apps.
+3. **Pixel XL (student)**: enable USB debugging; `adb devices -l`;
+   `adb shell getprop ro.product.cpu.abilist` (expect `arm64-v8a,…`); then
+   `adb -s <serial> install -r artifacts/android/mensa-student-1.0.0-2-armeabi-v7a+arm64-v8a-8a8c581.apk`
+   (or the arm64 file). It replaces the stage 2 build in place and keeps its data. Set a PIN and enrol
+   a fingerprint, then follow [manual-tests.md](manual-tests.md).
+4. **iPad (till) in Expo Go**: install Expo Go from the App Store (it still supports SDK 54; Expo:
+   "Expo Go on the Apple App Store stops at SDK 54"). `pnpm till` on the Mac, same network, scan the
+   terminal's QR with the iPad camera. If Expo Go asks, sign in to the same Expo account as the CLI.
+5. **iPhone 17 Pro (student with Face ID)**: Expo Go cannot use Face ID, so this needs a development
+   build. Xcode → Settings → Accounts → add your Apple ID (a free personal team works; profiles last
+   7 days); enable Developer Mode on the phone; connect it; then `cd apps/student &&
+pnpm exec expo run:ios --device` (generates `ios/`, runs CocoaPods; several GB). If the bundle ID
+   is taken for your team, change `ios.bundleIdentifier` in `app.json`.
+6. **Gradle JDK pin**: `~/.gradle/gradle.properties` pins JDK 11 globally; `pnpm apk:*` passes JDK 17
+   per build and leaves the file alone.
+7. **Accounts**: invite the reviewers to the private repository when ready. A dashboard host and,
+   optionally, an Expo account for EAS are not set up.
 
-## Recommended scope for stage 3: the payment interface
+## Recommended scope for stage 4: finance dashboard and delivery
 
-1. **Student**: seeded-account picker (sign-in through `SessionCoordinator`); QR scan
-   (`expo-camera`) → `parseOrderQr` → `GET /orders/{id}`; confirmation with the server's amount and
-   local biometric or PIN authorization before `payOrder`; a result screen driven by `paymentDisplay`
-   and polling; history including payments still being checked; payment detail.
-2. **Till**: cashier sign-in; menu from `GET /mensas`; order entry → `createOrder` → QR display;
-   following the order to paid or expired; full and partial refunds with the server's refundable
-   amount and clear refusal messages.
-3. **Recovery UI**: unresolved intents with "checking" states, a retry action inside the replay
-   window, and a deliberate way for a cashier to close an unresolvable refund intent after checking
-   the payment's history (today it blocks further refunds on that payment indefinitely).
-4. **First real payment**: confirm whether settlement grows the payment's `version` (api-notes,
-   observation 7) before relying on polling to show `confirmed`.
-5. A screen-reader pass of the pay flow (TalkBack and VoiceOver), the dual-ABI review APK, the till
-   APK, and an iOS development build.
-
-The dashboard (totals, attention queue, search, CSV export, deployment) follows after that.
+1. **Dashboard**: daily totals per mensa and per till (Europe/Berlin days, "last fetched at", not "as
+   of"), payments that need attention, search with the full history of a payment, CSV export that
+   follows every page of the selected filter.
+2. **Deployment** of the dashboard to a public URL, with a CORS check from the deployed origin.
+3. **Submission**: the design document (architecture, payment states on phone and till, releases for
+   an app that cannot be hotfixed, device security and data protection, technology choices, API
+   changes), the README's run instructions and test logins, and the device test results from
+   [manual-tests.md](manual-tests.md).

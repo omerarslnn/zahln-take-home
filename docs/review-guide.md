@@ -21,8 +21,42 @@ command that proves the change.
 9. `packages/domain/src/intent-controller.test.ts` and `testing/fake-server.ts`: the failure scenarios
    and the simulated server they run against.
 10. `apps/student/src/payments/`: the SecureStore adapter and the provider that wires everything into
-    the app; `components/PaymentAvailability.tsx` and `SecureStorageCheck.tsx`.
+    the app; then the screens in `apps/student/src/screens/` and `apps/till/src/screens/`.
 11. `eslint.config.mjs`: the platform boundary as rules.
+
+## Follow one payment through the code
+
+The live payment of 2026-11-01 (staff, €5.80, `pay_90d914f2be37a714`) took this path:
+
+1. **Scan** (`apps/student/src/screens/ScanScreen.tsx`): the camera callback takes `ScanLock`
+   synchronously, `parseOrderQr` turns `zahln://pay?order=<id>` into an order ID, and the screen
+   navigates to `Review`. The camera unmounts as soon as the screen loses focus.
+2. **Review** (`ReviewScreen.tsx`, `useOrder.ts`): `api.getOrder` goes through `ScopedApi` →
+   `SessionCoordinator.run` → `client.getOrder` → transport (`X-Candidate-Id`, `X-App-Version`,
+   bearer). The answer passes the decoder and `controller.cache.putOrder` (newest version wins); the
+   screen shows the server's `amountCents` and counts down on server time.
+3. **Native authorization** (`PaymentAuthorizer.run` in `packages/domain/src/payment-authorization.ts`,
+   `apps/student/src/local-auth.ts`): the lock is taken before anything awaits; Expo
+   LocalAuthentication shows the system prompt (fingerprint, or the device PIN). After it returns,
+   user, order, amount and review must be unchanged or nothing is sent.
+4. **Controller** (`IntentController.payOrder`): one start per order (`startOnce`), an existing intent
+   is reused, the gate reads `GET /config`, server time must be known, a new key comes from
+   `expo-crypto`.
+5. **Storage before transport** (`runAttempt`): the record is saved as `submitting` through the
+   SecureStore adapter (`apps/*/src/payments/secure-intent-store.ts`) before the request leaves; a
+   failed save sends nothing.
+6. **Transport and session**: `createPayment` with the `Idempotency-Key`; a `401 session_expired` or
+   `unauthorized` triggers one shared re-login of the same account and one repeat with the same key and
+   body.
+7. **Classification and settle** (`classifyWrite`, `isOwnPayment`): a 201 for this order, payer and
+   amount links the payment to the intent (`applied`, `pending v1`); anything ambiguous leaves it
+   `unknown`.
+8. **Polling and cache** (`Poller`, `observePayment`): `GET /payments/{id}` every 1, 2, 4… seconds,
+   through `putPaymentDetail`; `withPayment` keeps the higher version (`confirmed v2`).
+9. **Result** (`ResultScreen.tsx`): `useControllerRevision` re-renders on the change; `describeOutcome`
+   (from `paymentDisplay`) says "Paid" only for `confirmed`; the screen reader hears it once.
+10. **Till** (`apps/till/src/screens/CheckoutScreen.tsx`): its own controller polls the order intent
+    (`paying v2` → `paid v3`); `PaidResult` reads the payment for the payer's amount and price group.
 
 ## Native concepts, mapped
 
@@ -44,6 +78,11 @@ command that proves the change.
 | `Poller.setActive` from `AppState`                              | `repeatOnLifecycle(STARTED)` / `scenePhase` pausing work in the background                               |
 | `PaymentGate`                                                   | A remote-config forced-update check, minus the store link (the API has none)                             |
 | `ResourceCache`                                                 | An upsert that only writes when the incoming row's version is higher                                     |
+| `PaymentAuthorizer` + Expo LocalAuthentication                  | `BiometricPrompt` with device credential / `LAContext` device-owner authentication, behind a mutex       |
+| expo-camera `CameraView` + `ScanLock`                           | CameraX / `AVCaptureSession` with ML Kit / Vision, plus an `AtomicBoolean` against repeated frames       |
+| `useControllerRevision` (`useSyncExternalStore`)                | Collecting a `StateFlow` / observing an `@Published` value                                               |
+| `navigation.reset` after paying                                 | `popUpTo` / `setViewControllers`, so Back does not return to a stale review                              |
+| `app.json` plugins, `blockedPermissions`, `locales`             | Manifest merger `tools:node="remove"`, Info.plist usage strings, `InfoPlist.strings` per language        |
 | `EXPO_PUBLIC_*` / `VITE_*`                                      | `BuildConfig` fields / Info.plist values: readable from the binary, never secrets                        |
 | Release APK signed with `debug.keystore`                        | A release variant signed with the debug key: installable, not publishable                                |
 
@@ -152,6 +191,17 @@ different peer set, crashes at runtime. Do not import it from the dashboard.
   re-login, a mock-specific mechanism; bearer tokens are memory-only too. Records hold IDs, amounts
   and states only.
 - _Is there an offline queue?_ No. Writes happen only on a user action; polling only reads.
+- _Is the fingerprint check secure?_ It is a device-side gate. The mock server never sees proof of
+  it; only the bearer token authorizes the payment. Production needs a server-verifiable approval
+  (a device key signing a challenge).
+- _Why can a cashier not cancel an open order?_ There is no cancel endpoint. The order expires after
+  5 minutes; until it is paid or expired, the till keeps it and starts no other.
+- _Why is the QR drawn with Views?_ react-native-svg made pnpm create a second NativeWind copy, which
+  broke styling in the other app (`docs/architecture.md`, "One copy of NativeWind").
+- _Why does the app log in again on `401 unauthorized`?_ The live API answers a token expired for
+  about a minute with `unauthorized`, not `session_expired` (`docs/api-notes.md`).
+- _Why do the till's columns set `importantForAccessibility`?_ Without it, Android sorted the contents
+  of both columns by position, which put "Create order" between two dishes in the accessibility tree.
 - _Why Expo SDK 54, not 58?_ This Mac's Xcode 26.1.1; SDK 55+ needs Xcode 26.2–26.4+ (README).
 - _Why do the native apps list `react-native-css-interop` and `@babel/plugin-transform-react-jsx`?_
   NativeWind relies on hoisting; pnpm's isolated layout makes those dependencies explicit

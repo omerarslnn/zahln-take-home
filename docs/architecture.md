@@ -1,4 +1,4 @@
-# Architecture (stage 2)
+# Architecture (stage 3)
 
 ## Packages and dependency direction
 
@@ -110,7 +110,12 @@ Problem code**, not by HTTP status or `retryable`. Timeouts, dropped connections
 | Minimum version and payments switch              | `payment-gate.ts`, `app-version.ts`         |
 | Newest copy of orders and payments               | `resource-cache.ts`, `versioning.ts`        |
 | Bounded, pausable polling                        | `poller.ts`                                 |
-| Till QR → order ID                               | `qr.ts` (`parseOrderQr`)                    |
+| Till QR or typed code → order ID                 | `qr.ts` (`parseOrderQr`, `parseOrderCode`)  |
+| One scan per code                                | `scan-lock.ts` (`ScanLock`)                 |
+| Local authorization bound to user, order, amount | `payment-authorization.ts`                  |
+| Payment history pages, merge with local actions  | `payment-history.ts`                        |
+| Basket limits (no prices)                        | `basket.ts`                                 |
+| Euro amounts typed by a cashier → cents          | `@mensa/shared` `format/euro-input.ts`      |
 | SecureStore adapter, native wiring (each app)    | `apps/*/src/payments/`                      |
 
 ### The life of an intent
@@ -286,12 +291,71 @@ keeps the history.
 ### Native wiring
 
 `apps/*/src/payments/PaymentServices.tsx` creates one `PaymentGate`, `SessionCoordinator` and
-SecureStore-backed store per app process, and one `IntentController` per signed-in user (keyed by
-user ID and role, so a 5-minute re-login keeps the controller). An `AppState` listener refreshes the
-gate, forgets the server-time estimate and pauses or resumes polling. If the user's records cannot be
-read, no controller is offered (`recordsUnavailable`). Keys come from `expo-crypto`'s `randomUUID`.
-Nobody signs in yet, so in this stage no controller exists in the apps and nothing is written; the
-student app shows the gate state, and both apps have a secure-storage self-check.
+SecureStore-backed store per app process, and one `IntentController` plus one `ScopedApi` (the
+authenticated reads) per signed-in user, keyed by user ID and role so a 5-minute re-login keeps the
+controller. It signs a seeded account in by username; the password stays in that module. An
+`AppState` listener refreshes the gate, forgets the server-time estimate and pauses or resumes
+polling. If the user's records cannot be read, no controller is offered (`recordsUnavailable`) and
+new payments stay blocked. Keys come from `expo-crypto`'s `randomUUID`. Screens re-render through
+`useControllerRevision`, whose snapshot is the controller's change counter: `controller.list()`
+returns a new array each call and must never be a `useSyncExternalStore` snapshot.
+
+## The apps (stage 3)
+
+### Student: one payment, screen by screen
+
+```
+SignIn ─▶ Home ─▶ Scan ─▶ Review ─▶ (local authorization) ─▶ Result ─▶ History ─▶ PaymentDetail
+                    │                                              ▲
+                    └── typed code (screen readers, no camera) ────┘ Home lists unfinished payments
+```
+
+| Step      | Where                                                                                 | What protects it                                                                                                                                                                                                                                                                |
+| --------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Scan      | `screens/ScanScreen.tsx`                                                              | `ScanLock` taken synchronously in the camera callback; `parseOrderQr` accepts only `zahln://pay?order=<id>`; the camera runs only while the screen is focused and the app in front. Typed codes go through `parseOrderCode`. Nothing scanned is opened or trusted as an amount. |
+| Review    | `screens/ReviewScreen.tsx`, `useOrder.ts`                                             | The order is read from our API (payer view): the amount is the server's `amountCents` for the payer's price group, never a client sum. Expiry by server time. Each change of state, version or amount is a new review.                                                          |
+| Authorize | `PaymentAuthorizer` (`packages/domain/src/payment-authorization.ts`), `local-auth.ts` | One prompt and one send at a time (synchronous lock). After the prompt: same user, same order, same amount, same review, screen still shown, or nothing is sent. A cancelled, failed or unavailable prompt sends nothing.                                                       |
+| Pay       | `IntentController.payOrder`                                                           | Saved before sending; one intent per order; gate checked; see "The life of an intent".                                                                                                                                                                                          |
+| Result    | `screens/ResultScreen.tsx`, `payment-outcome.ts`                                      | Words come from `paymentDisplay`: only `confirmed` is "Paid". "Check again" only reads; "Send again safely" re-sends the same key and body after a new local authorization.                                                                                                     |
+| History   | `screens/HistoryScreen.tsx`, `PaymentHistory` + `mergeHistory`                        | Pages load on request; a late page from an earlier load is dropped; an action without an answer is shown without an invented payment ID; an identified payment appears once.                                                                                                    |
+
+The local authorization is a demonstration of a device-side gate. The mock server does not verify a
+biometric or a PIN; it only checks the bearer token. A production system would bind approval to a
+device key the server can verify (a signed challenge), as strong customer authentication requires.
+
+### Till: one checkout, then refunds
+
+```
+SignIn ─▶ Checkout: menu + basket ─▶ order intent ─▶ QR (open) ─▶ paying ─▶ paid | expired ─▶ Next customer
+          └─▶ Payments (own till, search) ─▶ PaymentDetail ─▶ refund (amount, reason, confirm) ─▶ refund intent
+```
+
+- **The checkout is the order intent, not the request.** An applied order is still waiting for its
+  payer, so `isFinal` counts it as finished only when the server says `paid` or `expired`; until then
+  no other order starts and nothing dismisses it, also across a restart. A create request without an
+  answer is resent with the same key, or closed once any order it could have created must have
+  expired unseen (`canCloseUnshownOrder`: no QR was ever shown, order IDs are unguessable).
+- **Prices.** The basket holds items and quantities only. Per-group totals come from the server
+  (`order.amounts`, cashier view) after the order exists; the payer's own amount comes from the
+  payment once it is paid.
+- **QR.** `components/OrderQr.tsx`: `qrcode` builds the module matrix, drawn as rows of plain Views
+  with a 4-module quiet zone. Not react-native-svg: see "One copy of NativeWind" below.
+- **Refunds.** `screens/PaymentDetailScreen.tsx`: capacity is the server's `refundableAmountCents`
+  (pending refunds already reserved), re-read by the controller right before sending; amounts are
+  parsed by `parseEuroAmount` (integer cents, German or English decimals, no thousands separators);
+  an explicit confirmation precedes one refund intent; an unresolved refund (pending, or without an
+  answer) blocks another one on the same payment.
+
+### One copy of NativeWind
+
+NativeWind's styles live in `react-native-css-interop`. pnpm creates a second copy of it when the two
+apps resolve its optional peers differently: adding `react-native-svg` to the till did exactly that.
+Third-party JSX (React Native's own components, navigation) resolved one copy through pnpm's hoisted
+folder while app code used the other, and class names on remapped components silently disappeared in
+the student app. The till therefore draws its QR without SVG, and `pnpm check` runs
+`scripts/check-single-instances.mjs`, which fails if react, react-native, react-native-css-interop or
+nativewind exists twice. Separately, NativeWind did not apply classes to `KeyboardAvoidingView` even
+with one copy, so the screen wrapper (`components/ui.tsx`) gives it a plain style.
 
 ## Configuration
 
@@ -322,6 +386,10 @@ The language switch is a radio group (Android reports `RadioButton` with the che
 are announced: an Android live region, an explicit VoiceOver announcement on iOS, and `aria-live` on
 the web. The payment gate card is a polite live region, so on Android a change (for example payments
 paused) is announced; iOS has no live regions, and the gate card does not announce changes there yet.
+Android leaves plain containers out of the accessibility tree and orders their contents by screen
+position, which mixed the till's two side-by-side columns; each column is therefore kept as a group
+(`collapsable={false}`, `importantForAccessibility="yes"`). React Native already groups every view's
+children for VoiceOver.
 The dashboard keeps `<html lang>` in sync with the chosen language.
 
 ## Internationalisation

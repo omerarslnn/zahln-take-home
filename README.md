@@ -3,23 +3,25 @@
 One mensa payment flow across three surfaces (student app, till and the Studierendenwerk
 dashboard) in one TypeScript monorepo, built against the supplied mock API.
 
-> **Status: stage 2 of 5, payment rules.** The domain layer that keeps money from moving twice is
-> built and tested: persisted intents with idempotency keys, unknown-outcome recovery, session
-> re-login without account crossover, server time, version reconciliation and the version and
-> maintenance gate. It is wired into both native apps, but **there are no payment screens yet**: nobody
-> signs in, scans or pays. The tests run against a simulated server; the only live writes were two
-> cashier orders to observe the QR format. Progress and test records: [docs/progress.md](docs/progress.md).
+> **Status: stage 3 of 5, usable student and till apps.** A payer signs in with a seeded test account,
+> scans the till's QR code (or types the order code), confirms with fingerprint, face or device PIN and
+> sees the server's result; history shows every payment, including those still being checked. The till
+> rings up orders, shows the QR, follows the order to paid or expired and refunds in full or in part.
+> Verified live on an Android emulator with release builds (one payment, two refunds); **physical
+> devices, fingerprint, Face ID and screen readers are not tested yet** (see
+> [docs/manual-tests.md](docs/manual-tests.md)). The finance dashboard is stage 4. Records:
+> [docs/progress.md](docs/progress.md).
 
 ## What exists today
 
-| Part                   | Implemented                                                                                                                                                                                  | Shell only / not yet                                    |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| `apps/student` (Expo)  | Native stack navigation, DE/EN switch, payment availability from `GET /config` (version and maintenance gate), SecureStore intent storage and its self-check, payment services provider      | User picker, QR scan, pay confirmation, result, history |
-| `apps/till` (Expo)     | Tablet-first layout (two columns from 768 dp, stacked on phones), DE/EN switch, SecureStore intent storage and its self-check, payment services provider                                     | Order entry, QR display, payment status, refunds        |
-| `apps/dashboard` (web) | DE/EN switch (also sets `<html lang>`), shared tokens and formatting, in-browser `GET /config` check that proves CORS and `Date` header exposure                                             | Daily totals, attention queue, search, CSV export       |
-| `packages/api`         | Types generated from the contract, transport (timeouts, headers, Problem parsing, server `Date`, replay flag), typed client for all ten operations with runtime validation, live smoke check | n/a                                                     |
-| `packages/domain`      | Intents and their controller, write classification, session coordinator, server clock, payment gate, version reconciliation, bounded polling, QR parser; 50 deterministic tests              | Use from real screens (stage 3)                         |
-| `packages/shared`      | DE/EN catalogues, euro-cent and Europe/Berlin formatting, design tokens + Tailwind preset, React i18n bindings                                                                               | n/a                                                     |
+| Part                   | Implemented                                                                                                                                                                                                                                                              | Shell only / not yet                              |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------- |
+| `apps/student` (Expo)  | Seeded sign-in, QR scan or typed code, review with the server's amount, local authorization (biometric or device PIN), truthful result with safe resend, paginated history with unresolved actions, payment detail with refunds and history, DE/EN, screen-reader labels | Device verification (see manual tests)            |
+| `apps/till` (Expo)     | Seeded cashier sign-in, menu with per-group prices, basket, order with QR and countdown, follows paid/expired across restarts, payer's amount when paid, payment list and search, full and partial refunds, DE/EN, tablet layout                                         | Device verification                               |
+| `apps/dashboard` (web) | DE/EN switch (also sets `<html lang>`), shared tokens and formatting, in-browser `GET /config` check that proves CORS and `Date` header exposure                                                                                                                         | Daily totals, attention queue, search, CSV export |
+| `packages/api`         | Types generated from the contract, transport (timeouts, headers, Problem parsing, server `Date`, replay flag), typed client for all ten operations with runtime validation, live smoke check                                                                             | n/a                                               |
+| `packages/domain`      | Intents and their controller, write classification, session coordinator, server clock, payment gate, version reconciliation, bounded polling, QR and code parsing, authorization binding, scan lock, history paging, basket rules                                        | n/a                                               |
+| `packages/shared`      | DE/EN catalogues, euro-cent and Europe/Berlin formatting, design tokens + Tailwind preset, React i18n bindings                                                                                                                                                           | n/a                                               |
 
 ## Prerequisites
 
@@ -40,7 +42,7 @@ Verified on this setup (see [docs/progress.md](docs/progress.md) for exact resul
 ```sh
 corepack enable pnpm   # once per machine: puts the pinned pnpm on PATH (undo: corepack disable pnpm)
 pnpm install           # first run also downloads the pinned Node.js 24.22.2 for project scripts
-pnpm env:init          # copies each .env.example to .env (never overwrites)
+pnpm env:init          # copies each .env.example to .env (never overwrites); then set EXPO_PUBLIC_SEEDED_PASSWORD
 pnpm toolchain         # shows the Node.js and pnpm versions that actually run the scripts
 ```
 
@@ -65,18 +67,20 @@ Both Metro servers can run at the same time, and the apps have distinct native I
 (`dev.omerarslan.mensa.student`, `dev.omerarslan.mensa.till`), so their builds install side by side.
 
 **Expo Go and SDK 54:** Expo CLI installs the matching Expo Go (54) on simulators and emulators
-automatically. The App Store's Expo Go on a physical iPhone only supports the newest SDK (58), so a
-physical iPhone needs a development build (see _Manual steps_). On a physical Android phone, use the
-standalone APK, or install Expo Go 54 from expo.dev/go.
+automatically. On a physical iPhone or iPad, the App Store's Expo Go runs SDK 54 projects (Expo's
+troubleshooting guide: "Expo Go on the Apple App Store stops at SDK 54"); the till runs there. Face ID
+does not work in Expo Go, so the student app needs a development build on an iPhone (see _Manual
+steps_). On a physical Android phone, use the standalone APK.
 
 ## Checks
 
 ```sh
-pnpm check            # Prettier check, ESLint (type-aware), typecheck (all 6 workspaces), unit tests, dashboard build
+pnpm check            # Prettier, ESLint (type-aware), typecheck (6 workspaces), tests, single-instance check, dashboard build
 pnpm bundle:native    # Metro + Hermes bundles for iOS and Android, both apps (no native compile)
 pnpm api:spec-diff    # opt-in, network: live OpenAPI vs committed copy (read-only)
 ZAHLN_SMOKE_PASSWORD=<seeded password> pnpm api:smoke         # opt-in, network: see below
 ZAHLN_SMOKE_PASSWORD=<seeded password> pnpm api:order-probe   # opt-in, network, WRITES one cashier order
+ZAHLN_SMOKE_PASSWORD=<seeded password> pnpm api:payment-probe # opt-in, network, WRITES one order + one payment
 ```
 
 `pnpm api:smoke` sends only `GET /config`, `POST /sessions` (one seeded account), `GET /mensas` (with
@@ -87,23 +91,28 @@ OpenAPI description's "Seeded logins" table; keep it out of committed files.
 `pnpm api:order-probe` creates **one live order** as the seeded cashier `cashier-campus-1`, through the
 real intent path, and prints the QR payload with the order ID replaced by `<orderId>`. Its intent is
 saved in `.local/order-probe-intents.json` (git-ignored) before the request is sent, so running it
-again reuses the same key and only reads. It never pays or refunds.
+again reuses the same key and only reads. It never pays or refunds. `pnpm api:payment-probe` adds one
+payment by the seeded student and records the payment's status and version as it settles; it resumes
+on a rerun and starts nothing new without `--new-order` / `--new-payment`. Live writes are listed in
+[docs/api-notes.md](docs/api-notes.md#live-writes-ledger).
 
 ## Android standalone APK
 
 ```sh
-pnpm apk:student                       # armeabi-v7a + arm64-v8a (covers low-end phones with 32-bit userspace)
-ANDROID_ABIS=arm64-v8a pnpm apk:student  # faster, emulator/modern-phone only
-adb install -r artifacts/android/mensa-student-1.0.0-<abis>.apk
+pnpm apk:student                         # armeabi-v7a + arm64-v8a: the review build for any phone
+ANDROID_ABIS=arm64-v8a pnpm apk:student  # faster: emulator and 64-bit phones (Pixel XL included)
+pnpm apk:till                            # the same for the till
+adb -s <serial> install -r artifacts/android/<file>.apk
 ```
 
 The script runs `expo prebuild --clean` (regenerating the git-ignored `android/` folder from
 `app.json`) and `gradlew assembleRelease` with JDK 17. The JavaScript is compiled to Hermes bytecode
-inside the APK, so it runs without Metro. Limitations: it is signed with the template **debug keystore**
-(installable, but not a Play Store build; a build signed with another key cannot update it) and it has
-no payment screens yet. Built so far: `mensa-student-1.0.0-arm64-v8a.apk` (stage 2, includes the
-SecureStore and crypto native modules). The dual-ABI review APK and a till APK have not been built.
-EAS Build is the alternative route; it needs an Expo account and was not used.
+inside the APK, so it runs without Metro. File names carry the version, the Android build code, the
+ABIs and the source commit, with `-dirty` for a build from uncommitted changes, for example
+`mensa-student-1.0.0-2-armeabi-v7a+arm64-v8a-8a8c581.apk`. Current builds, checksums and their
+verification: [docs/progress.md](docs/progress.md). All are signed with the React Native template
+**debug key** (installable and updatable over earlier builds from this repository, but not a Play Store
+build). EAS Build is the alternative route; it needs an Expo account and was not used.
 
 **App version:** `expo.version` in each `apps/*/app.json` (now `1.0.0`, equal to the server's
 `minAppVersion`). Builds turn it into Android's versionName and iOS's CFBundleShortVersionString; at
@@ -111,14 +120,16 @@ runtime `appVersion` in `apps/*/src/api.ts` reads it and the transport sends it 
 
 ## Configuration and what is public
 
-| File                                  | Variables                                              | Visibility                                                                |
-| ------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------- |
-| `apps/student/.env`, `apps/till/.env` | `EXPO_PUBLIC_API_BASE_URL`, `EXPO_PUBLIC_CANDIDATE_ID` | **Public**: inlined into the app bundle (verified in the Hermes bytecode) |
-| `apps/dashboard/.env`                 | `VITE_API_BASE_URL`, `VITE_CANDIDATE_ID`               | **Public**: inlined into the web bundle                                   |
-| `.env` (root)                         | `ZAHLN_*` for the smoke check                          | Local scripts only, never bundled                                         |
+| File                                  | Variables                                                                             | Visibility                                                                |
+| ------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `apps/student/.env`, `apps/till/.env` | `EXPO_PUBLIC_API_BASE_URL`, `EXPO_PUBLIC_CANDIDATE_ID`, `EXPO_PUBLIC_SEEDED_PASSWORD` | **Public**: inlined into the app bundle (verified in the Hermes bytecode) |
+| `apps/dashboard/.env`                 | `VITE_API_BASE_URL`, `VITE_CANDIDATE_ID`                                              | **Public**: inlined into the web bundle                                   |
+| `.env` (root)                         | `ZAHLN_*` for the smoke check                                                         | Local scripts only, never bundled                                         |
 
 The candidate ID is a data namespace sent on every request, not a credential. Client builds cannot
-keep secrets, so no secret, token or password belongs in any of these files. Bearer tokens are held in
+keep secrets, so no secret or token belongs in any of these files. The one password,
+`EXPO_PUBLIC_SEEDED_PASSWORD`, is the mock's published test password: the apps need it to sign the
+seeded accounts in (mock-specific; a real app never ships a password). Bearer tokens are held in
 memory only. Saved payment intents (Expo SecureStore on the device) hold IDs, amounts and states, never
 a token, password or name. `.env` files, signing material, generated native projects and `.local/` are
 git-ignored.
@@ -141,36 +152,41 @@ More: [docs/architecture.md](docs/architecture.md) · [docs/api-notes.md](docs/a
 
 ## Technology choices
 
-| Choice                                                  | Why                                                                                                                                                              |
-| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Expo SDK 54, React Native 0.81.5, React 19.1.0          | Newest stable SDK this Mac's Xcode 26.1.1 can build for iOS; still patched (54.0.38). Upgrading to SDK 58 needs Xcode 26.4+ (Node 24 is already in place).       |
-| pnpm 10 workspaces, isolated layout                     | Stops packages from using undeclared dependencies. Expo supports isolated installs from SDK 54. No Turborepo/Nx: not needed at this size.                        |
-| NativeWind 4.2.7 + Tailwind 3.4.19 everywhere           | NativeWind's stable line requires Tailwind 3; using Tailwind 3 on the web too lets one preset carry the design tokens to all three apps.                         |
-| Vite 8 + React 19.1.0 for the dashboard                 | React pinned to the Expo version, so one React instance exists in the workspace.                                                                                 |
-| openapi-typescript 7                                    | Types generated from the contract; the transport (~200 lines) and the runtime decoders are hand-written to keep retry and validation semantics explicit.         |
-| TypeScript 5.9, ESLint 9 (flat, type-aware), Prettier 3 | TypeScript 7 is not supported by typescript-eslint yet. ESLint 9 is deprecated upstream; ESLint 10 runs on the pinned Node 24 but is deferred to its own change. |
-| `node:test` via tsx                                     | Platform-neutral logic is tested without a Jest/Babel setup.                                                                                                     |
+| Choice                                                  | Why                                                                                                                                                                 |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Expo SDK 54, React Native 0.81.5, React 19.1.0          | Newest stable SDK this Mac's Xcode 26.1.1 can build for iOS; still patched (54.0.38). Upgrading to SDK 58 needs Xcode 26.4+ (Node 24 is already in place).          |
+| pnpm 10 workspaces, isolated layout                     | Stops packages from using undeclared dependencies. Expo supports isolated installs from SDK 54. No Turborepo/Nx: not needed at this size.                           |
+| NativeWind 4.2.7 + Tailwind 3.4.19 everywhere           | NativeWind's stable line requires Tailwind 3; using Tailwind 3 on the web too lets one preset carry the design tokens to all three apps.                            |
+| Vite 8 + React 19.1.0 for the dashboard                 | React pinned to the Expo version, so one React instance exists in the workspace.                                                                                    |
+| openapi-typescript 7                                    | Types generated from the contract; the transport (~200 lines) and the runtime decoders are hand-written to keep retry and validation semantics explicit.            |
+| TypeScript 5.9, ESLint 9 (flat, type-aware), Prettier 3 | TypeScript 7 is not supported by typescript-eslint yet. ESLint 9 is deprecated upstream; ESLint 10 runs on the pinned Node 24 but is deferred to its own change.    |
+| `node:test` via tsx                                     | Platform-neutral logic is tested without a Jest/Babel setup.                                                                                                        |
+| expo-camera 17, expo-local-authentication 17            | SDK 54's own camera (with barcode scanning) and biometric/device-PIN prompt; both work in Expo Go on Android, and permissions are set in `app.json`.                |
+| qrcode 1.5.4                                            | Mature QR encoder; the till draws its matrix with plain Views. react-native-qrcode-svg had eight releases in four days, and react-native-svg duplicated NativeWind. |
 
 ## Known blockers and limitations
 
-- **No payment screens yet** (stage 3). The rules are tested against a simulated server only; no live
-  payment or refund has been made, so live behaviour of payment settlement, 426, 503 and session
-  expiry is unobserved.
-- Two live cashier orders exist where one was intended (a fixed bug, see `docs/progress.md`); both
-  expired unpaid.
-- The API has no way to find a write whose response was lost other than replaying it within 24 hours;
-  an unresolved refund intent older than that blocks further refunds on that payment until stage 3
-  adds a deliberate resolution step.
-- iPhone (physical): App Store Expo Go cannot open SDK 54 projects; a development build needs Apple
-  signing in Xcode (manual).
-- No Android tablet AVD exists (no Android Studio / `avdmanager` installed). The till's tablet layout
-  was verified on the iPad simulator and on the phone emulator with tablet screen metrics.
-- Only the `arm64-v8a` student APK (1.0.0) has been built and installed (emulator); the dual-ABI
-  review APK and the till APK have not been built yet. No physical device has been tested.
+- **Device testing is pending**: the apps were verified on an Android emulator only. The Pixel XL
+  (fingerprint, Android 10 PIN fallback), the iPad till, the iPhone (Face ID, development build) and
+  screen readers follow [docs/manual-tests.md](docs/manual-tests.md).
+- **Local authorization is a device-side gate.** The mock API cannot verify a fingerprint or PIN; only
+  the bearer token authorizes a payment.
+- **No lookup by idempotency key.** A payment, order or refund whose response was lost can only be
+  settled by resending it with the same key within 24 hours. After that an unknown payment stays
+  unknown (the history shows what the server recorded), and an unknown refund keeps blocking another
+  refund on that payment, on purpose: nothing may make it look final.
+- **No cancel endpoint**: an open order runs out after 5 minutes; the till waits for paid or expired.
+- **Mock sessions**: the apps keep the published test password in memory to sign in again when the
+  5-minute token ends (the API has no refresh token); expired tokens answer `401 unauthorized` after
+  about a minute, which the apps treat like `session_expired`.
+- No Android tablet emulator: the till's two-column layout was checked on the phone emulator at a
+  tablet-like width (864 dp), and on the iPad simulator only in stage 1.
+- Changing the display size makes Android recreate the app's screen, and the app returns to sign-in
+  because the session lives in memory only; saved intents come back after signing in. Font size and
+  system language changes should do the same (not tested).
 - Plain `./gradlew`, Android Studio and `expo run:android` still get the JDK 11 pin from
   `~/.gradle/gradle.properties`; only `pnpm apk:*` overrides it.
-- Disk: about 4 GB free. Native builds (NDK, Gradle caches, emulator, simulators) are tight.
-- Dashboard deployment, CI, crash reporting: later stages.
+- Dashboard features and deployment, CI and crash reporting: stage 4 and later.
 
 ## Manual steps on this Mac
 
@@ -181,6 +197,6 @@ See [docs/progress.md](docs/progress.md#manual-steps) for the current, precise l
 - **ChatGPT (OpenAI)**: task analysis, prompt preparation and read-only source review.
 - **Claude Code (Anthropic)** in VS Code, model Claude Opus 5.5: implementation (code, tests,
   scripts and documentation) and the executed verification recorded in `docs/progress.md`, in
-  stages 1 and 2.
+  stages 1 to 3.
 
 Update this section as later stages use AI tools.

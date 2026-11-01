@@ -26,29 +26,32 @@ supplied file. Never modify `brief/`. Record live-spec differences in `docs/api-
 
 ## Current stage
 
-Stage 2 (payment rules) is done; see `docs/progress.md`. `@mensa/domain` implements intents,
-recovery, sessions, server time, gates and reconciliation, tested against a SIMULATED server
-(`packages/domain/src/testing/`). Both native apps wire it in, but there are no payment screens yet:
-nobody signs in, scans, pays or refunds through the UI.
+Stage 3 (usable student and till apps) is done; see `docs/progress.md`. The student app signs in a
+seeded payer, scans or types the order code, authorizes locally (biometric or device PIN), shows only
+the server's result and lists history including unresolved payments. The till rings up orders with a
+QR code, follows them to paid or expired and refunds in full or in part. Verified on an Android
+emulator with release builds; physical devices, fingerprint, Face ID and screen readers are pending
+(`docs/manual-tests.md`). Next: stage 4, the finance dashboard and its public deployment.
 
-Live writes: the only one allowed is `pnpm api:order-probe` (one cashier order per saved intent; a
-re-run reuses the saved key and only reads). It created two orders on 2026-10-31 because of a since
-fixed bug. **No live payment or refund** until a stage explicitly asks for one. Never add an automatic
-offline payment queue or a background payment retry: writes happen only on a user action.
+Live writes go only through intents (the apps, `pnpm api:order-probe`, `pnpm api:payment-probe`) and
+only when the current stage authorizes them; record each one in the ledger in `docs/api-notes.md`.
+Never add an automatic offline payment queue or a background payment retry: writes happen only on a
+user action.
 
 ## Commands
 
 ```sh
 pnpm install            # pnpm 10.34.9 via Corepack (packageManager field); fetches pinned Node 24.22.2
 pnpm toolchain          # prints the Node.js/pnpm that actually run project scripts
-pnpm check              # format:check + lint + typecheck + test + dashboard production build
+pnpm check              # format:check + lint + typecheck + test + single instances + dashboard build
 pnpm student | pnpm till | pnpm dashboard     # Metro 8081 | Metro 8082 | Vite 5173
 pnpm bundle:native      # expo export for iOS and Android (both apps)
 pnpm api:generate       # regenerate packages/api/src/generated from the contract copy
 pnpm api:smoke          # opt-in live check: GET /config, POST /sessions, GET /mensas, CORS preflights
 pnpm api:spec-diff      # opt-in: compare the live OpenAPI document with the committed copy
 pnpm api:order-probe    # opt-in, WRITES one live cashier order (QR format probe); see README
-pnpm apk:student        # standalone release APK (debug-keystore signed) into artifacts/android/
+pnpm api:payment-probe  # opt-in, WRITES one live order + payment, records settlement; resumes on re-run
+pnpm apk:student | pnpm apk:till   # release APKs (debug-key signed, commit in the file name)
 ```
 
 Run tools through `pnpm` so they get the pinned Node.js (`useNodeVersion` in `pnpm-workspace.yaml`,
@@ -66,14 +69,15 @@ mirrored in `.nvmrc` and `engines`). The system `node` on this Mac is 23.11 and 
 - No `console` in app or package source: tokens, passwords, bodies, amounts tied to users and
   personal data must never be logged.
 - Native apps read config only as literal `process.env.EXPO_PUBLIC_*`; the dashboard uses `VITE_*`.
-  Both are public (inlined into bundles). No secrets in any client env.
+  Both are public (inlined into bundles). No secrets in any client env: the one password there,
+  `EXPO_PUBLIC_SEEDED_PASSWORD`, is the mock's published test password; keep it in memory only.
 
 ## Payment invariants
 
-Invariants 1–10 are enforced in `@mensa/domain` and `@mensa/api` and covered by deterministic tests
-against the simulated server (mutation-checked; see `docs/progress.md`). No UI or live payment
-exercises them yet, and the UI halves (show the server's amount, pay exactly that, show only
-`confirmed` as paid) arrive with the screens. 11 and 12 are still design constraints.
+Invariants 1–10 are enforced in `@mensa/domain` and `@mensa/api`, covered by deterministic tests
+against the simulated server (mutation-checked; see `docs/progress.md`), and used by the screens: they
+show the server's amount, pay exactly that and show only `confirmed` as paid. 11 is for the stage 4
+dashboard; 12 is implemented as a device gate.
 
 1. Money is integer cents (EUR). The API resolves prices by the authenticated payer's price group;
    the client never computes a price. It sends back the amount it showed (`amount_mismatch` guards).
@@ -91,15 +95,17 @@ exercises them yet, and the UI halves (show the server's amount, pay exactly tha
    never replace a higher version with a lower one (`newerOf`). Observed exception: order expiry keeps
    the version, so `isLaterOrderState` accepts `open` → `expired` at an equal version, and nothing else.
 7. Scope caches and recovery records to candidate ID and user ID.
-8. Re-authentication (`401 session_expired`; tokens last at most 5 minutes) must preserve the pending
-   intent and must never let it continue under a different account.
+8. Re-authentication (`401 session_expired`, or `401 unauthorized` once a token has been expired for
+   about a minute; tokens last at most 5 minutes) must preserve the pending intent and must never let
+   it continue under a different account.
 9. Server time (`Date` header) governs expiry. Local expiry never resolves an outstanding payment.
 10. Refunds have their own `pending`/`completed`/`failed` lifecycle; pending refunds reserve
     refundable capacity.
 11. Finance reports use Europe/Berlin days. CSV export follows every page (cursor) of the selected
     filter, not only the visible page.
 12. Local biometric or PIN confirmation is a device-side gate. The mock API cannot verify it, so it
-    is not server-verifiable payment approval.
+    is not server-verifiable payment approval. `PaymentAuthorizer` binds one prompt to user, order,
+    amount and review; cancel or no screen lock sends nothing.
 
 ## Conventions
 
@@ -107,17 +113,24 @@ exercises them yet, and the UI halves (show the server's amount, pay exactly tha
   SDK 55+ needs Xcode 26.2+ (see README). React 19.1.0 everywhere, exact pins.
 - App version: `expo.version` in `apps/*/app.json` (1.0.0, the server's `minAppVersion`), read at
   runtime as `appVersion` in `apps/*/src/api.ts` and sent as `X-App-Version`. Bump it there; generated
-  native projects pick it up on the next `expo prebuild --clean`.
+  native projects pick it up on the next `expo prebuild --clean`. Raise `android.versionCode` and
+  `ios.buildNumber` (now 2) for each build handed to a device.
 - Android builds need JDK 17. `~/.gradle/gradle.properties` on this Mac pins JDK 11 globally; leave it,
   and build through `pnpm apk:*`, which passes `-Dorg.gradle.java.home` for JDK 17.
 - Styling: NativeWind 4 + Tailwind 3 with the shared preset `@mensa/shared/tailwind-preset`
-  (tokens in `packages/shared/src/tokens/tokens.json`). Minimum touch target 48.
+  (tokens in `packages/shared/src/tokens/tokens.json`). Minimum touch target 48. NativeWind ignores
+  `className` on `KeyboardAvoidingView` (give it a style, as `Screen` does). Exactly one copy of react,
+  react-native, react-native-css-interop and nativewind may exist: an optional peer that differs
+  between apps (react-native-svg did) duplicates css-interop, and `pnpm check:instances` fails.
+- Side-by-side columns need `collapsable={false}` and `importantForAccessibility="yes"`, or Android
+  screen readers mix their contents by screen position (see the till's `CheckoutScreen`).
 - Comments explain decisions, not syntax. JSDoc on public functions. Keep functions short enough to
   explain in an interview.
 - Tests: `node:test` via `tsx`, colocated `*.test.ts`, only for behaviour worth protecting. Test
   doubles live in `packages/*/src/testing/` and are never exported from a package index (Metro does
   not tree-shake; they would ship in the app bundles).
-- The student and till apps keep identical copies of `src/payments/*` and `SecureStorageCheck.tsx`;
-  change both.
-- Keep `docs/progress.md` and `docs/api-notes.md` in step with actual results; mark checks as passed,
-  failed, blocked or not run.
+- The student and till apps keep identical copies (apart from the header comment naming the other
+  copy) of `src/api.ts`, `src/payments/*` and `src/components/` `ui.tsx`, `payment-text.ts`,
+  `PaymentDetails.tsx`, `SecureStorageCheck.tsx`, `ConnectionCheck.tsx`; change both.
+- Keep `docs/progress.md`, `docs/api-notes.md` and `docs/manual-tests.md` in step with actual
+  results; mark checks as passed, failed, blocked or not run.
