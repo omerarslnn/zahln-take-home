@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { afterEach, describe, it } from 'node:test';
+import { execFileSync } from 'node:child_process';
+import { describe, it } from 'node:test';
 import {
   addCalendarDays,
   berlinDayRange,
@@ -37,16 +38,29 @@ describe('berlinDayRange', () => {
     });
   });
 
-  it('gives the same instants whatever time zone the host runs in', () => {
-    const expected = berlinDayRange('2026-03-29', '2026-10-25');
+  it('gives the same instants and day names whatever time zone the host runs in', () => {
+    // A fresh process per zone: a formatter made at module load keeps the zone it was made in, so
+    // changing TZ inside this process would prove nothing.
+    const module = JSON.stringify(new URL('./berlin-days.ts', import.meta.url).href);
+    const script = `const m = await import(${module});
+      console.log(JSON.stringify([m.berlinDayRange('2026-03-29', '2026-03-29'),
+        m.berlinDayRange('2026-10-25', '2026-10-25'), m.formatCalendarDay('2026-10-25', 'de')]));`;
     for (const zone of ['America/Los_Angeles', 'Asia/Tokyo', 'Pacific/Kiritimati', 'UTC']) {
-      process.env.TZ = zone;
-      assert.deepEqual(berlinDayRange('2026-03-29', '2026-10-25'), expected, zone);
+      const output = execFileSync(
+        process.execPath,
+        ['--import', 'tsx', '--input-type=module', '--eval', script],
+        { env: { ...process.env, TZ: zone }, encoding: 'utf8' },
+      );
+      assert.deepEqual(
+        JSON.parse(output),
+        [
+          { from: '2026-03-29T00:00:00+01:00', to: '2026-03-30T00:00:00+02:00' },
+          { from: '2026-10-25T00:00:00+02:00', to: '2026-10-26T00:00:00+01:00' },
+          'Sonntag, 25. Oktober 2026',
+        ],
+        zone,
+      );
     }
-  });
-
-  afterEach(() => {
-    delete process.env.TZ;
   });
 });
 
@@ -83,10 +97,8 @@ describe('calendar days', () => {
 });
 
 describe('formatCalendarDay', () => {
-  it('names the calendar day itself, whatever the host time zone', () => {
-    process.env.TZ = 'Pacific/Honolulu';
+  it('names the calendar day itself in both languages', () => {
     assert.equal(formatCalendarDay('2026-10-25', 'de'), 'Sonntag, 25. Oktober 2026');
     assert.match(formatCalendarDay('2026-10-25', 'en'), /^Sunday,? 25 October 2026$/);
-    delete process.env.TZ;
   });
 });

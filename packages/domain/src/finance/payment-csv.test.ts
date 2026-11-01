@@ -92,6 +92,13 @@ describe('paymentsToCsv', () => {
     assert.equal(rows[1]?.[PAYMENT_CSV_COLUMNS.indexOf('till_name')], 'Kasse Müller-Straße');
   });
 
+  it('quotes a value whose only special character is a line break', () => {
+    const csv = paymentsToCsv([payment({ till: { id: 'till_x', name: 'Kasse\r\nOst' } })]);
+    const rows = parseCsv(csv.slice(1));
+    assert.equal(rows.length, 2);
+    assert.equal(rows[1]?.[PAYMENT_CSV_COLUMNS.indexOf('till_name')], 'Kasse\r\nOst');
+  });
+
   it('neutralises text that a spreadsheet would run as a formula', () => {
     for (const hostile of [
       '=HYPERLINK("https://example.test","x")',
