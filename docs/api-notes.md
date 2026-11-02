@@ -90,9 +90,10 @@ so the tests catch it (see [progress.md](progress.md)).
   `refund_failed` (3); statuses pending and confirmed only. One flagged payment
   (`pay_a187fa060754b166`, `refund_failed`) shows `refundableAmountCents: 0` with nothing refunded:
   the dashboard shows the server's numbers as they are.
-- **CORS from a browser** (headless Chrome at `http://localhost:4173`): every preflight allowed
+- **CORS from a browser** (headless Chrome, at `http://localhost:4173` and on 2026-11-02 at the
+  deployed origin `https://zahln-mensa-dashboard-4ft.pages.dev`): every preflight allowed
   `X-Candidate-Id`, the authenticated ones `Authorization` too, with `Access-Control-Allow-Origin: *`;
-  no request was blocked. The deployed origin is still to be checked.
+  no request was blocked.
 
 ## Observed formats (2026-10-31)
 
@@ -122,8 +123,8 @@ Simulated from Node (`pnpm api:smoke`, 2026-10-29), origins `http://localhost:51
 A command-line success does not prove browser CORS, because only a browser enforces it. **Real browser
 check:** headless Chrome loaded the production dashboard from `http://localhost:4173/?check`. The
 preflighted `GET /config` (custom `X-Candidate-Id` header) succeeded and JavaScript could read
-`Date` (`data-server-date-readable="true"`). The deployed dashboard origin must be checked again
-once it exists. Every web request carries `X-Candidate-Id`, so every request is preflighted; the 600 s
+`Date` (`data-server-date-readable="true"`). The deployed origin
+(`https://zahln-mensa-dashboard-4ft.pages.dev`) passed the same browser checks on 2026-11-02. Every web request carries `X-Candidate-Id`, so every request is preflighted; the 600 s
 max-age keeps the extra round trip to roughly one per endpoint every 10 minutes.
 
 ## Contract observations and open questions

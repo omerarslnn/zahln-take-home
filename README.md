@@ -3,26 +3,27 @@
 One mensa payment flow across three surfaces (student app, till and the Studierendenwerk
 dashboard) in one TypeScript monorepo, built against the supplied mock API.
 
-> **Status: stage 4 of 5: all three surfaces are built.** The student app pays a till order after a
-> local fingerprint, face or PIN check and shows only the server's result; the till rings up orders,
-> shows the QR and refunds; the finance dashboard shows Berlin daily totals per mensa and till,
+> **Status: stage 4 of 5. All three surfaces are built, and the dashboard is live at
+> https://zahln-mensa-dashboard-4ft.pages.dev/** (sign in with the finance demo account). The student app pays a till order
+> after a local fingerprint, face or PIN check and shows only the server's result; the till rings up
+> orders, shows the QR and refunds; the dashboard shows Berlin daily totals per mensa and till,
 > payments that need attention, filtered payments with full history, and exports every matching
-> payment as CSV. Verified: unit and simulated-server tests, live API runs on an Android emulator,
-> and a headless-browser run of the dashboard against the live API. **Not yet verified**: physical
-> devices, fingerprint, Face ID, screen readers, and the public dashboard URL (a hosting account is
-> still to be chosen). Design: [docs/design.md](docs/design.md). Records:
-> [docs/progress.md](docs/progress.md).
+> payment as CSV. Verified automatically: unit and simulated-server tests, live API runs on an Android
+> emulator, and headless-browser runs of the dashboard against the live API, locally and on the
+> deployed URL. **Not yet verified**: the student and till apps on physical devices (fingerprint,
+> Face ID), screen readers, and the dashboard's manual keyboard and VoiceOver checks. Design:
+> [docs/design.md](docs/design.md). Records: [docs/progress.md](docs/progress.md).
 
 ## What exists today
 
-| Part                   | Implemented                                                                                                                                                                                                                                                                                                                     | Shell only / not yet                   |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
-| `apps/student` (Expo)  | Seeded sign-in, QR scan or typed code, review with the server's amount, local authorization (biometric or device PIN), truthful result with safe resend, paginated history with unresolved actions, payment detail with refunds and history, DE/EN, screen-reader labels                                                        | Device verification (see manual tests) |
-| `apps/till` (Expo)     | Seeded cashier sign-in, menu with per-group prices, basket, order with QR and countdown, follows paid/expired across restarts, payer's amount when paid, payment list and search, full and partial refunds, DE/EN, tablet layout                                                                                                | Device verification                    |
-| `apps/dashboard` (web) | Finance sign-in (public demo account), Berlin daily totals per mensa and till with "last fetched" and failed-refresh states, payments that need attention, filtered cursor-paged payments, payment detail with refunds and history, complete CSV export, DE/EN, diagnostics                                                     | Public deployment (host to be chosen)  |
-| `packages/api`         | Types generated from the contract, transport (timeouts, headers, Problem parsing, server `Date`, replay flag), typed client for all ten operations with runtime validation, live smoke check                                                                                                                                    | n/a                                    |
-| `packages/domain`      | Intents and their controller, write classification, session coordinator, server clock, payment gate, version reconciliation, bounded polling, QR and code parsing, authorization binding, scan lock, history paging, basket rules; `/finance`: read-only API with bounded retries, daily report store, cursor-chain export, CSV | n/a                                    |
-| `packages/shared`      | DE/EN catalogues, euro-cent and Europe/Berlin formatting, Berlin calendar-day ranges across clock changes, design tokens + Tailwind preset, React i18n bindings                                                                                                                                                                 | n/a                                    |
+| Part                   | Implemented                                                                                                                                                                                                                                                                                                                     | Shell only / not yet                     |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| `apps/student` (Expo)  | Seeded sign-in, QR scan or typed code, review with the server's amount, local authorization (biometric or device PIN), truthful result with safe resend, paginated history with unresolved actions, payment detail with refunds and history, DE/EN, screen-reader labels                                                        | Device verification (see manual tests)   |
+| `apps/till` (Expo)     | Seeded cashier sign-in, menu with per-group prices, basket, order with QR and countdown, follows paid/expired across restarts, payer's amount when paid, payment list and search, full and partial refunds, DE/EN, tablet layout                                                                                                | Device verification                      |
+| `apps/dashboard` (web) | Finance sign-in (public demo account), Berlin daily totals per mensa and till with "last fetched" and failed-refresh states, payments that need attention, filtered cursor-paged payments, payment detail with refunds and history, complete CSV export, DE/EN, diagnostics; deployed on Cloudflare Pages                       | Manual keyboard and screen-reader checks |
+| `packages/api`         | Types generated from the contract, transport (timeouts, headers, Problem parsing, server `Date`, replay flag), typed client for all ten operations with runtime validation, live smoke check                                                                                                                                    | n/a                                      |
+| `packages/domain`      | Intents and their controller, write classification, session coordinator, server clock, payment gate, version reconciliation, bounded polling, QR and code parsing, authorization binding, scan lock, history paging, basket rules; `/finance`: read-only API with bounded retries, daily report store, cursor-chain export, CSV | n/a                                      |
+| `packages/shared`      | DE/EN catalogues, euro-cent and Europe/Berlin formatting, Berlin calendar-day ranges across clock changes, design tokens + Tailwind preset, React i18n bindings                                                                                                                                                                 | n/a                                      |
 
 ## Prerequisites
 
@@ -123,7 +124,22 @@ It defaults to the preview server and works against a deployed URL as well.
 
 ## Dashboard deployment
 
-The dashboard is a static site. Nothing is deployed yet: a hosting account has to be chosen first.
+**Live:** https://zahln-mensa-dashboard-4ft.pages.dev/ (Cloudflare Pages project `zahln-mensa-dashboard`, production branch
+`main`, deployed 2026-11-02 by direct upload of a local build; this upload is also at
+https://9b7d6d23.zahln-mensa-dashboard-4ft.pages.dev). The served `index.html`, JavaScript and CSS
+are byte-identical to a build of `7c08d2f`; the dashboard's code has not changed since `0f503cf`.
+
+Checked on the deployed URL (2026-11-02):
+
+- **Automated, passed:** `pnpm dashboard:browser-check -- --url https://zahln-mensa-dashboard-4ft.pages.dev/`, 36/36, run by the
+  owner and once more independently: sign-in, reports equal to the API, attention list, filters,
+  paging, payment detail, a filtered and a complete CSV export (5,582 payments), cancellation, German,
+  phone width, deep-link reload, sign-out, and CORS from this origin (no request blocked). Plain HTTP
+  redirects to HTTPS.
+- **Manual:** the owner signed in with the finance demo account and opened Daily totals, Needs
+  attention and Payments.
+- **Not run on the deployed URL:** the 6.5-minute idle-session check (`--idle`, passed locally only)
+  and the manual checks D1–D4 in [docs/manual-tests.md](docs/manual-tests.md).
 
 | What                                        | Value                                                                                                                            |
 | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
@@ -133,19 +149,13 @@ The dashboard is a static site. Nothing is deployed yet: a hosting account has t
 | SPA rewrites                                | None needed: routes live after `#`, so deep links and reloads work on any static host                                            |
 | CORS                                        | The API answers `Access-Control-Allow-Origin: *` and allows the requested headers; no proxy needed                               |
 
-Recommended: **Cloudflare Pages** with a direct upload of the locally built folder (free, HTTPS, no
-access to the private repository needed). After `pnpm dashboard:build`:
+To redeploy after a change (the project exists; `wrangler login` is needed once per machine):
 
 ```sh
-pnpm dlx wrangler@4.151.1 login                                          # once, in the browser
-pnpm dlx wrangler@4.151.1 pages project create mensa-dashboard --production-branch main
-pnpm dlx wrangler@4.151.1 pages deploy apps/dashboard/dist --project-name mensa-dashboard --branch main
-pnpm dashboard:browser-check -- --url <the https URL wrangler prints>    # the real-origin check
+pnpm dashboard:build
+pnpm dlx wrangler@4.151.1 pages deploy apps/dashboard/dist --project-name zahln-mensa-dashboard --branch main
+pnpm dashboard:browser-check -- --url https://zahln-mensa-dashboard-4ft.pages.dev/
 ```
-
-Equivalent on Netlify: `pnpm dlx netlify-cli@27.13.0 login`, then
-`pnpm dlx netlify-cli@27.13.0 deploy --dir apps/dashboard/dist --prod` (it offers to create the site).
-Then open the URL in a private window: sign in, a report day, a payment, a CSV download, DE/EN.
 
 ## Android standalone APK
 
@@ -219,8 +229,6 @@ More: [docs/design.md](docs/design.md) · [docs/architecture.md](docs/architectu
 
 ## Known blockers and limitations
 
-- **Public dashboard URL**: not deployed; a hosting account is the one missing choice (see
-  _Dashboard deployment_).
 - **Device testing is pending**: the apps were verified on an Android emulator only. The Pixel XL
   (fingerprint, Android 10 PIN fallback), the iPad till, the iPhone (Face ID, development build) and
   screen readers follow [docs/manual-tests.md](docs/manual-tests.md).
