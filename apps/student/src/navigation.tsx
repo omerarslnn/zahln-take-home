@@ -1,5 +1,6 @@
 import { useI18n } from '@mensa/shared/react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import type * as Catalogue from './screens/DesignCatalogueScreen';
 import { usePaymentServices } from './payments/PaymentServices';
 import { DiagnosticsScreen } from './screens/DiagnosticsScreen';
 import { HistoryScreen } from './screens/HistoryScreen';
@@ -21,6 +22,8 @@ export type RootStackParamList = {
   History: undefined;
   PaymentDetail: { paymentId: string };
   Diagnostics: undefined;
+  /** Development builds only: the design-system catalogue. */
+  DesignCatalogue: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -68,6 +71,17 @@ export function RootNavigator() {
         component={DiagnosticsScreen}
         options={{ title: t('nav.diagnostics') }}
       />
+      {__DEV__ ? (
+        // Development only: the require sits in a branch Metro removes from release bundles.
+        <Stack.Screen
+          name="DesignCatalogue"
+          getComponent={() =>
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
+            (require('./screens/DesignCatalogueScreen') as typeof Catalogue).DesignCatalogueScreen
+          }
+          options={{ title: 'Design system' }}
+        />
+      ) : null}
     </Stack.Navigator>
   );
 }
