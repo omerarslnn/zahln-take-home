@@ -4,26 +4,28 @@ One mensa payment flow across three surfaces (student app, till and the Studiere
 dashboard) in one TypeScript monorepo, built against the supplied mock API.
 
 > **Status: stage 4 of 5. All three surfaces are built, and the dashboard is live at
-> https://zahln-mensa-dashboard-4ft.pages.dev/** (sign in with the finance demo account). The student app pays a till order
-> after a local fingerprint, face or PIN check and shows only the server's result; the till rings up
-> orders, shows the QR and refunds; the dashboard shows Berlin daily totals per mensa and till,
-> payments that need attention, filtered payments with full history, and exports every matching
-> payment as CSV. Verified automatically: unit and simulated-server tests, live API runs on an Android
-> emulator, and headless-browser runs of the dashboard against the live API, locally and on the
-> deployed URL. **Not yet verified**: the student and till apps on physical devices (fingerprint,
-> Face ID), screen readers, and the dashboard's manual keyboard and VoiceOver checks. Design:
+> https://zahln-mensa-dashboard-4ft.pages.dev/** (sign in with the finance demo account). The student
+> app pays a till order after a local fingerprint, face or PIN check and shows only the server's
+> result; the till rings up orders, shows the QR and refunds; the dashboard shows Berlin daily totals
+> per mensa and till, payments that need attention, filtered payments with full history, and exports
+> every matching payment as CSV. Verified: unit and simulated-server tests, live API runs on an Android
+> emulator, headless-browser runs of the dashboard (locally and on the deployed URL), and the core
+> payment and refund flows on a Pixel XL (Android 10), an iPad A16 and an iPhone 17 Pro (Face ID) on
+> 2026-11-04. **Not yet verified**: TalkBack and VoiceOver, maximum font sizes, a force-stop with a
+> genuinely unresolved payment, a real lost response on a device, and some dashboard manual checks.
+> **Open: BUG-01** (payment-availability warnings on the review screen; see _Known blockers_). Design:
 > [docs/design.md](docs/design.md). Records: [docs/progress.md](docs/progress.md).
 
 ## What exists today
 
-| Part                   | Implemented                                                                                                                                                                                                                                                                                                                     | Shell only / not yet                     |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
-| `apps/student` (Expo)  | Seeded sign-in, QR scan or typed code, review with the server's amount, local authorization (biometric or device PIN), truthful result with safe resend, paginated history with unresolved actions, payment detail with refunds and history, DE/EN, screen-reader labels                                                        | Device verification (see manual tests)   |
-| `apps/till` (Expo)     | Seeded cashier sign-in, menu with per-group prices, basket, order with QR and countdown, follows paid/expired across restarts, payer's amount when paid, payment list and search, full and partial refunds, DE/EN, tablet layout                                                                                                | Device verification                      |
-| `apps/dashboard` (web) | Finance sign-in (public demo account), Berlin daily totals per mensa and till with "last fetched" and failed-refresh states, payments that need attention, filtered cursor-paged payments, payment detail with refunds and history, complete CSV export, DE/EN, diagnostics; deployed on Cloudflare Pages                       | Manual keyboard and screen-reader checks |
-| `packages/api`         | Types generated from the contract, transport (timeouts, headers, Problem parsing, server `Date`, replay flag), typed client for all ten operations with runtime validation, live smoke check                                                                                                                                    | n/a                                      |
-| `packages/domain`      | Intents and their controller, write classification, session coordinator, server clock, payment gate, version reconciliation, bounded polling, QR and code parsing, authorization binding, scan lock, history paging, basket rules; `/finance`: read-only API with bounded retries, daily report store, cursor-chain export, CSV | n/a                                      |
-| `packages/shared`      | DE/EN catalogues, euro-cent and Europe/Berlin formatting, Berlin calendar-day ranges across clock changes, design tokens + Tailwind preset, React i18n bindings                                                                                                                                                                 | n/a                                      |
+| Part                   | Implemented                                                                                                                                                                                                                                                                                                                     | Shell only / not yet                                     |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `apps/student` (Expo)  | Seeded sign-in, QR scan or typed code, review with the server's amount, local authorization (biometric or device PIN), truthful result with safe resend, paginated history with unresolved actions, payment detail with refunds and history, DE/EN, screen-reader labels                                                        | BUG-01; screen-reader and maximum-font checks on devices |
+| `apps/till` (Expo)     | Seeded cashier sign-in, menu with per-group prices, basket, order with QR and countdown, follows paid/expired across restarts, payer's amount when paid, payment list and search, full and partial refunds, DE/EN, tablet layout                                                                                                | VoiceOver check on the iPad                              |
+| `apps/dashboard` (web) | Finance sign-in (public demo account), Berlin daily totals per mensa and till with "last fetched" and failed-refresh states, payments that need attention, filtered cursor-paged payments, payment detail with refunds and history, complete CSV export, DE/EN, diagnostics; deployed on Cloudflare Pages                       | Manual keyboard and screen-reader checks                 |
+| `packages/api`         | Types generated from the contract, transport (timeouts, headers, Problem parsing, server `Date`, replay flag), typed client for all ten operations with runtime validation, live smoke check                                                                                                                                    | n/a                                                      |
+| `packages/domain`      | Intents and their controller, write classification, session coordinator, server clock, payment gate, version reconciliation, bounded polling, QR and code parsing, authorization binding, scan lock, history paging, basket rules; `/finance`: read-only API with bounded retries, daily report store, cursor-chain export, CSV | n/a                                                      |
+| `packages/shared`      | DE/EN catalogues, euro-cent and Europe/Berlin formatting, Berlin calendar-day ranges across clock changes, design tokens + Tailwind preset, React i18n bindings                                                                                                                                                                 | n/a                                                      |
 
 ## Prerequisites
 
@@ -68,26 +70,36 @@ All passwords are the API description's published `test1234`.
 
 ## Run
 
-| Command                               | What                                                                       | Port |
-| ------------------------------------- | -------------------------------------------------------------------------- | ---- |
-| `pnpm student`                        | Metro for the student app (press `a` / `i`)                                | 8081 |
-| `pnpm student:android`                | …and open it in Expo Go on a running emulator                              | 8081 |
-| `pnpm student:ios`                    | …and open it in Expo Go on an iOS simulator                                | 8081 |
-| `pnpm till`                           | Metro for the till app                                                     | 8082 |
-| `pnpm till:android` / `pnpm till:ios` | as above, for the till                                                     | 8082 |
-| `pnpm dashboard`                      | Vite dev server                                                            | 5173 |
-| `pnpm dashboard:build`                | Production build to `apps/dashboard/dist`                                  | n/a  |
-| `pnpm dashboard:preview`              | Serve the production build                                                 | 4173 |
-| `pnpm dashboard:browser-check`        | Drive the served build in headless Chrome against the live API (read-only) | n/a  |
+| Command                               | What                                                                            | Port |
+| ------------------------------------- | ------------------------------------------------------------------------------- | ---- |
+| `pnpm student`                        | Metro for the student app (press `a` / `i`)                                     | 8081 |
+| `pnpm student:android`                | …and open it in Expo Go on a running emulator                                   | 8081 |
+| `pnpm student:ios`                    | …and open it in Expo Go on an iOS simulator                                     | 8081 |
+| `pnpm till`                           | Metro for the till; serves the till's development build (press `s` for Expo Go) | 8082 |
+| `pnpm till:android` / `pnpm till:ios` | …and open it in Expo Go on a running emulator / iOS simulator                   | 8082 |
+| `pnpm dashboard`                      | Vite dev server                                                                 | 5173 |
+| `pnpm dashboard:build`                | Production build to `apps/dashboard/dist`                                       | n/a  |
+| `pnpm dashboard:preview`              | Serve the production build                                                      | 4173 |
+| `pnpm dashboard:browser-check`        | Drive the served build in headless Chrome against the live API (read-only)      | n/a  |
 
 Both Metro servers can run at the same time, and the apps have distinct native IDs
 (`dev.omerarslan.mensa.student`, `dev.omerarslan.mensa.till`), so their builds install side by side.
 
-**Expo Go and SDK 54:** Expo CLI installs the matching Expo Go (54) on simulators and emulators
-automatically. On a physical iPhone or iPad, the App Store's Expo Go runs SDK 54 projects (Expo's
-troubleshooting guide: "Expo Go on the Apple App Store stops at SDK 54"); the till runs there. Face ID
-does not work in Expo Go, so the student app needs a development build on an iPhone (see _Manual
-steps_). On a physical Android phone, use the standalone APK.
+**Physical devices** (the setup verified on 2026-11-04; Mac and devices on the same network):
+
+| App     | Device           | Build                                                                                                                        | Metro                                                                                    |
+| ------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Student | Android phone    | Release APK, no Metro needed (see _Android standalone APK_)                                                                  | —                                                                                        |
+| Student | iPhone (Face ID) | Debug build: `pnpm --filter @mensa/student exec expo run:ios --device` (Face ID needs a native build; Expo Go cannot use it) | `pnpm student` (8081)                                                                    |
+| Till    | iPad             | Development build with `expo-dev-client`: `pnpm --filter @mensa/till exec expo run:ios --device --port 8082`                 | `pnpm till` (8082), then open Mensa Till; it connects through the `mensa-till://` scheme |
+
+The till also still runs in the App Store's Expo Go, which supports SDK 54: start `pnpm till` and
+press `s`, or use `pnpm till:ios` / `pnpm till:android` on a simulator or emulator. Both Metro servers
+run side by side, so the iPhone and the iPad can be used together.
+
+iOS signing stays local: the Apple team chosen for `expo run:ios --device` is kept in the git-ignored
+`apps/*/ios` projects. If Expo CLI ever writes `ios.appleTeamId` into an `app.json` (it does after a
+clean iOS prebuild), do not commit that line.
 
 ## Checks
 
@@ -175,6 +187,16 @@ verification: [docs/progress.md](docs/progress.md). All are signed with the Reac
 **debug key** (installable and updatable over earlier builds from this repository, but not a Play Store
 build). EAS Build is the alternative route; it needs an Expo account and was not used.
 
+**Development client and release builds:** `expo-dev-client` is a till dependency for the iPad
+development build only. It is kept out of release builds on purpose: on Android its native modules
+are excluded from autolinking (`expo.autolinking.android.exclude` in `apps/till/package.json`; with
+them, a release APK grew from 28.2 to 41.9 MB and gained ML Kit, Google Play services and Compose
+tooling components and the `ACCESS_NETWORK_STATE` permission); on iOS, Expo links its modules in
+Debug only; no extra `exp+` URL scheme is generated (`addGeneratedScheme: false`); and pnpm does not
+hoist it (`pnpm-workspace.yaml`), so the student app, which has no development client, does not
+pick up its config plugin. Checked 2026-11-04: release APKs built with this setup have the same
+manifest, permissions and JavaScript bundle as build 3.
+
 **App version:** `expo.version` in each `apps/*/app.json` (now `1.0.0`, equal to the server's
 `minAppVersion`). Builds turn it into Android's versionName and iOS's CFBundleShortVersionString; at
 runtime `appVersion` in `apps/*/src/api.ts` reads it and the transport sends it as `X-App-Version`.
@@ -229,9 +251,15 @@ More: [docs/design.md](docs/design.md) · [docs/architecture.md](docs/architectu
 
 ## Known blockers and limitations
 
-- **Device testing is pending**: the apps were verified on an Android emulator only. The Pixel XL
-  (fingerprint, Android 10 PIN fallback), the iPad till, the iPhone (Face ID, development build) and
-  screen readers follow [docs/manual-tests.md](docs/manual-tests.md).
+- **BUG-01 (open, fix planned in Phase 1):** on the student's review screen, an offline
+  payment-availability warning appears twice; after reconnecting and returning to the foreground,
+  "Pay" comes back but one stale warning stays. Reconnecting while the app stays in the foreground
+  does not re-check availability at all. Details and acceptance criteria:
+  [docs/progress.md](docs/progress.md).
+- **Device testing is partly done** (2026-11-04): the core payment, refund, offline and session flows
+  passed on a Pixel XL, an iPad A16 and an iPhone 17 Pro. Not run on devices: TalkBack, VoiceOver,
+  maximum font sizes, a force-stop with a genuinely unresolved payment, a real lost response
+  (covered by simulated-server tests only), and direct ID-based access to another till's payment.
 - **Local authorization is a device-side gate.** The mock API cannot verify a fingerprint or PIN; only
   the bearer token authorizes a payment.
 - **No lookup by idempotency key.** A payment, order or refund whose response was lost can only be

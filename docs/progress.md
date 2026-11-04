@@ -430,6 +430,124 @@ this upload: https://9b7d6d23.zahln-mensa-dashboard-4ft.pages.dev. Redeploy step
 6. **CSV quoting of a value with only a line break was untested** (a mutation survived): the test
    value also had a comma and a quote. A value with only a CRLF is now tested.
 
+## Phase 0: baseline before the product polish (2026-11-04)
+
+No app behaviour changed. The local setup changes from the first device round were resolved with
+evidence, the device results recorded, and BUG-01 documented for Phase 1.
+
+### Setup changes resolved
+
+| Local change                                                                      | Evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | Resolution                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `expo-dev-client ~6.0.21` added to the till                                       | Kept: it runs Mensa Till as a development build on the iPad. But a till release APK built with it grew from 28.2 to 41.9 MB (dex 19.1 → 38.2 MB, native libraries 16.6 → 21.6 MB) and gained `ACCESS_NETWORK_STATE`, Google ML Kit barcode scanning, Google Play services and data-transport components, Compose's `PreviewActivity` and an `exp+mensa-till` URL scheme; its JavaScript bundle was byte-identical. Expo autolinking links Android modules into every variant (the `debugOnly` flag is Apple-only). | `expo.autolinking.android.exclude` for the seven dev-client modules (`apps/till/package.json`); `["expo-dev-client", { "addGeneratedScheme": false }]` (`apps/till/app.json`): Expo CLI takes the scheme the native projects share, `mensa-till`, which the iPad build already registers (the generated iOS project it was built from has no `exp+` scheme in its `Info.plist`); `pnpm till:android` / `till:ios` keep opening Expo Go (`--go`). |
+| The same install changed the **student** release                                  | pnpm hoisted `expo-dev-client` into `node_modules/.pnpm/node_modules`; pnpm's command shims put that folder on `NODE_PATH`, and Expo prebuild applies the dev client's config plugin whenever it can resolve the package. The student's release manifest gained `exp+mensa-student`.                                                                                                                                                                                                                               | `hoistPattern: ['*', '!expo-dev-client']` in `pnpm-workspace.yaml`; relinked offline with the unchanged lockfile. The student no longer resolves the package; the till still does.                                                                                                                                                                                                                                                               |
+| `ios.appleTeamId` in `apps/student/app.json`                                      | Written by `expo run:ios --device` (Expo CLI saves the chosen team when the config has none). The generated, git-ignored iOS projects of both apps hold the team (`DEVELOPMENT_TEAM`), and Expo CLI skips the team prompt when they do.                                                                                                                                                                                                                                                                            | Removed from `app.json`; local signing stays in `apps/*/ios`.                                                                                                                                                                                                                                                                                                                                                                                    |
+| `android.permissions` (biometric, fingerprint, camera) in `apps/student/app.json` | Expo's permission plugin only adds; the libraries already declare all three. A student release APK built with the list had the same seven permissions as build 3 (its one manifest difference, `exp+mensa-student`, came from the dev client; see the next row).                                                                                                                                                                                                                                                   | Removed as redundant; no permission was added or dropped.                                                                                                                                                                                                                                                                                                                                                                                        |
+| `platforms` array reformatted in `apps/student/app.json`                          | Failed `prettier --check`, so `pnpm check` failed.                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Restored: the file equals the committed version again.                                                                                                                                                                                                                                                                                                                                                                                           |
+
+Release impact, from arm64 release APKs built from the working tree for comparison only (not
+handed out; the build-3 APKs remain the deliverables):
+
+|                                   | Build 3 (`1b75e2b`) | With the dev client, before       | After Phase 0            |
+| --------------------------------- | ------------------- | --------------------------------- | ------------------------ |
+| Till: size                        | 28.2 MB             | 41.9 MB                           | 28.2 MB                  |
+| Till: permissions                 | 3                   | 4 (+ `ACCESS_NETWORK_STATE`)      | the same 3               |
+| Till: manifest                    | 4 components        | 12 components, + `exp+mensa-till` | identical to build 3     |
+| Till: JavaScript bundle           | 2,318,552 bytes     | identical                         | identical (same SHA-256) |
+| Student: manifest and permissions | 7 permissions       | + `exp+mensa-student`             | identical to build 3     |
+
+iOS: `expo-dev-launcher` and `expo-dev-menu` declare `debugOnly`, and in the generated Pods
+configuration they appear in Release only in header and compiler search paths, not in the linker
+flags. No iOS Release build was made here (it needs an archive with signing), so the iOS Release
+content is inferred from that configuration, not measured.
+
+### Physical-device results (2026-11-04)
+
+Run and reported by the owner. **Verified**: run as written, passed. **Partly**: part of the case.
+The build number used on each device was not recorded.
+
+| Device               | Scenario                                                             | Manual test | Status                                                                   |
+| -------------------- | -------------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------ |
+| Pixel XL, Android 10 | Real QR scan and payment with the iPad till                          | S4, S11     | verified                                                                 |
+| Pixel XL             | Device PIN authorization (Android 10 device-lock fallback)           | S9          | verified                                                                 |
+| Pixel XL             | Authorization cancelled; double tap gives one payment                | S8, S10     | verified                                                                 |
+| Pixel XL             | "Paid" status and the payment in the history                         | S11, H1     | S11 verified; H1 partly (paging and the seeded pending row not reported) |
+| Pixel XL             | Offline payment blocked, no false success                            | N1          | verified                                                                 |
+| Pixel XL             | Payment availability recovered after returning to the foreground     | —           | verified (foreground only; see BUG-01)                                   |
+| Pixel XL             | Background and resume during a payment                               | N5          | verified                                                                 |
+| Pixel XL             | History after 6 idle minutes without signing in again                | N7          | verified                                                                 |
+| Pixel XL             | Offline history keeps the loaded rows and warns                      | H3          | verified                                                                 |
+| iPad A16             | Checkout and QR creation                                             | T1, T3      | partly (rotation not reported)                                           |
+| iPad A16             | QR payment confirmed from another real device                        | T4          | verified                                                                 |
+| iPad A16             | Open order and QR kept across an app restart                         | T5          | verified                                                                 |
+| iPad A16             | Partial refund of €1.00                                              | T6          | verified                                                                 |
+| iPad A16             | Invalid refund amounts and formats blocked                           | T7          | verified                                                                 |
+| iPad A16             | "Refund everything left", €0.00 refundable                           | T8          | verified                                                                 |
+| iPad A16             | Offline refund blocked before sending; one refund after reconnecting | T10         | verified (offline path)                                                  |
+| iPad A16             | cashier-campus-1's payment absent from cashier-campus-2's list       | T9          | partly (list scope; a direct read by ID was not checked)                 |
+| iPhone 17 Pro        | Student debug build installed; real iPad till QR scanned             | S4          | verified                                                                 |
+| iPhone 17 Pro        | Face ID prompt and cancel                                            | S8          | verified                                                                 |
+| iPhone 17 Pro        | Face ID payment; device-passcode fallback                            | S11, S9     | verified                                                                 |
+| iPhone 17 Pro        | Same result on iPhone and iPad; one payment in the history           | S11, H1     | verified                                                                 |
+
+**Not run on a device**: S2, S3 (camera permission denied), S5–S7 (foreign QR, wrong code, expiry),
+S12 (maximum font sizes), S13 (German), N2 (send again after an unknown outcome), N3 (a real lost
+response), N4 (a payment that stays pending), N6 (force stop with a genuinely unresolved payment),
+N8 (account switch with an unresolved payment), N9 (BUG-01, fails today), H2, T2, A1–A4 (TalkBack,
+VoiceOver), D1–D4 (dashboard manual checks), and S10 on the iPhone.
+
+**Covered only by simulated-server tests**, not by a device: a lost response the server applied
+(payments, orders, refunds), a restart with an unknown intent (a new controller on the same store,
+not an OS process kill), an unknown refund outcome, the retention window, stale reads, and account
+isolation of saved intents.
+
+### BUG-01: payment-availability warnings on the student's review screen (open)
+
+**Observed** (Pixel XL, 2026-11-04): with the review screen open and the internet off, the
+availability warning appeared twice. After reconnecting and returning the app to the foreground,
+"Pay" was enabled again but one stale warning stayed. Reconnecting while the app stayed in the
+foreground did not reliably re-check availability.
+
+**Code paths that fit the observation**, to be confirmed by deterministic tests before any fix:
+
+1. The gate reads `GET /config` only at start-up, on each return to the foreground
+   (`PaymentServices`) and before each new payment (`IntentController`). Nothing reacts to the
+   connection coming back while the app stays in front, and the review screen hides "Pay" while the
+   gate is blocked, so the pre-payment check cannot run either.
+2. A blocked pay attempt stores the gate's message in the screen's own state
+   (`setMessage(gateMessage(started.gate))` in `ReviewScreen`) next to the live gate notice: two
+   warnings with the same text. When the gate reopens, the live notice goes and the stored copy
+   stays. `ResultScreen` keeps the same kind of copy after a blocked resend.
+3. `PaymentGate.refresh` shares a request that is still on its way (`refreshing ??=`). One that
+   started offline can hang until the 15-second transport timeout and hand its "unavailable" answer
+   to a refresh asked for after the connection returned.
+
+**Phase 1 acceptance criteria** (from the owner):
+
+- When connectivity returns while the app is in the foreground, payment availability is checked
+  again with `GET /config` automatically, without backgrounding, restarting or navigating away.
+- Network connectivity alone never enables payments; only the server's answer does. The kill
+  switch, the minimum version and the fail-closed behaviour stay.
+- Bounded retries with backoff after reconnecting; no constant polling, no racing refreshes, safe
+  fallbacks if a network event is missed; an earlier response never overrides a newer gate state.
+- Exactly one relevant availability warning; stored copies disappear when the gate opens; an
+  enabled "Pay" never appears next to a stale "unavailable" warning.
+- Deterministic tests for offline → online in the foreground, duplicate warnings and stale
+  responses; then N9 in [manual-tests.md](manual-tests.md) on the Pixel XL.
+
+**Reproduction plan**: unit tests on `PaymentGate` with a fake configuration read that fails,
+hangs and then succeeds; a pure function that chooses the review screen's notices; emulator runs
+with `cmd connectivity airplane-mode enable|disable` and screenshots; then N9 on the Pixel.
+
+### Checks (2026-11-04, fresh runs)
+
+| Check                                                                                | Result         | Notes                                                                                  |
+| ------------------------------------------------------------------------------------ | -------------- | -------------------------------------------------------------------------------------- |
+| `pnpm check`                                                                         | passed         | 153 tests in 46 suites, Prettier, ESLint, typecheck, single instances, dashboard build |
+| `pnpm bundle:native`                                                                 | passed         | iOS and Android, both apps                                                             |
+| `pnpm dashboard:browser-check -- --url https://zahln-mensa-dashboard-4ft.pages.dev/` | passed (36/36) | 15:32 CET                                                                              |
+| Release APK comparisons                                                              | see above      | Four arm64 builds, compared with build 3                                               |
+
 ## Manual steps
 
 1. **pnpm on PATH**: `corepack enable pnpm` (undo: `corepack disable pnpm`), or prefix commands with
@@ -443,14 +561,17 @@ this upload: https://9b7d6d23.zahln-mensa-dashboard-4ft.pages.dev. Redeploy step
    `adb -s <serial> install -r artifacts/android/mensa-student-1.0.0-3-armeabi-v7a+arm64-v8a-1b75e2b.apk`
    (or the arm64 file). It replaces an earlier build in place and keeps its data. Set a PIN and enrol
    a fingerprint, then follow [manual-tests.md](manual-tests.md).
-4. **iPad (till) in Expo Go**: install Expo Go from the App Store (it still supports SDK 54; Expo:
-   "Expo Go on the Apple App Store stops at SDK 54"). `pnpm till` on the Mac, same network, scan the
-   terminal's QR with the iPad camera. If Expo Go asks, sign in to the same Expo account as the CLI.
+4. **iPad (till)**: development build once with
+   `pnpm --filter @mensa/till exec expo run:ios --device --port 8082`, then `pnpm till` (Metro 8082)
+   and open Mensa Till. Alternative: the App Store's Expo Go (it supports SDK 54): `pnpm till`, press
+   `s`, scan the terminal's QR with the iPad camera.
 5. **iPhone 17 Pro (student with Face ID)**: Expo Go cannot use Face ID, so this needs a development
    build. Xcode → Settings → Accounts → add your Apple ID (a free personal team works; profiles last
-   7 days); enable Developer Mode on the phone; connect it; then `cd apps/student &&
-pnpm exec expo run:ios --device` (generates `ios/`, runs CocoaPods; several GB). If the bundle ID
-   is taken for your team, change `ios.bundleIdentifier` in `app.json`.
+   7 days); enable Developer Mode on the phone; connect it; then
+   `pnpm --filter @mensa/student exec expo run:ios --device` (generates `ios/`, runs CocoaPods;
+   several GB), and later `pnpm student` (Metro 8081). The team stays in the git-ignored `ios/`
+   project; if Expo CLI writes `ios.appleTeamId` into `app.json`, do not commit it. If the bundle ID is
+   taken for your team, change `ios.bundleIdentifier` in `app.json`.
 6. **Gradle JDK pin**: `~/.gradle/gradle.properties` pins JDK 11 globally; `pnpm apk:*` passes JDK 17
    per build and leaves the file alone.
 7. **Dashboard host**: done (Cloudflare Pages, https://zahln-mensa-dashboard-4ft.pages.dev/). After a change, redeploy with the
@@ -460,9 +581,10 @@ pnpm exec expo run:ios --device` (generates `ios/`, runs CocoaPods; several GB).
 
 ## Remaining for stage 5: submission
 
-1. Run the device tests in [manual-tests.md](manual-tests.md) with build 3 (Pixel, iPad, iPhone,
-   TalkBack, VoiceOver) and record each as passed, failed or not run here. UI changes may follow
-   from them; the design is not frozen.
-2. Run the dashboard's manual checks D1–D4 on the deployed URL.
-3. Final read-through of the README and [design.md](design.md); invite the reviewers; rehearse the
+1. Phase 1: fix BUG-01 against its acceptance criteria (above), then N9 on the Pixel XL.
+2. The UI polish phases agreed on 2026-11-04 (design system, sign-in, student and till screens),
+   each with its own checks.
+3. Device checks not run yet: TalkBack, VoiceOver, maximum font sizes, N6 with a genuinely
+   unresolved payment, and the other rows listed under "Not run on a device"; the dashboard's D1–D4.
+4. Final read-through of the README and [design.md](design.md); invite the reviewers; rehearse the
    review with [review-guide.md](review-guide.md).

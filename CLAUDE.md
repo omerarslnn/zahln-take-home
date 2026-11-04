@@ -26,12 +26,13 @@ supplied file. Never modify `brief/`. Record live-spec differences in `docs/api-
 
 ## Current stage
 
-Stage 4 (finance dashboard) is done and deployed: https://zahln-mensa-dashboard-4ft.pages.dev/ (Cloudflare Pages
-project `zahln-mensa-dashboard`, direct upload of a local build; see `docs/progress.md`). The
-dashboard signs in the seeded `finance` account (public demo password from `VITE_SEEDED_PASSWORD`),
-shows Berlin daily totals, payments that need attention, filtered payments with full history, and
-exports CSV. The student and till apps are build 3. Next: tests on physical devices and with screen
-readers (`docs/manual-tests.md`); UI changes may follow, so the design is not frozen.
+Stage 4 (finance dashboard) is done and deployed: https://zahln-mensa-dashboard-4ft.pages.dev/
+(Cloudflare Pages project `zahln-mensa-dashboard`, direct upload of a local build). The core payment
+and refund flows passed on a Pixel XL, an iPad A16 and an iPhone 17 Pro on 2026-11-04; screen
+readers, maximum font sizes and some recovery cases are still to run (`docs/progress.md`, Phase 0).
+Phase 0 (baseline) is done. Next: Phase 1, BUG-01 (payment-availability warnings and
+foreground connectivity recovery; acceptance criteria in `docs/progress.md`), then the agreed UI
+polish phases. The design is not frozen.
 
 Live writes go only through intents (the apps, `pnpm api:order-probe`, `pnpm api:payment-probe`) and
 only when the current stage authorizes them; record each one in the ledger in `docs/api-notes.md`.
@@ -44,7 +45,7 @@ user action.
 pnpm install            # pnpm 10.34.9 via Corepack (packageManager field); fetches pinned Node 24.22.2
 pnpm toolchain          # prints the Node.js/pnpm that actually run project scripts
 pnpm check              # format:check + lint + typecheck + test + single instances + dashboard build
-pnpm student | pnpm till | pnpm dashboard     # Metro 8081 | Metro 8082 | Vite 5173
+pnpm student | pnpm till | pnpm dashboard     # Metro 8081 | Metro 8082 (till dev build; s = Expo Go) | Vite 5173
 pnpm bundle:native      # expo export for iOS and Android (both apps)
 pnpm api:generate       # regenerate packages/api/src/generated from the contract copy
 pnpm api:smoke          # opt-in live check: GET /config, POST /sessions, GET /mensas, CORS preflights
@@ -117,6 +118,13 @@ dashboard; 12 is implemented as a device gate.
   runtime as `appVersion` in `apps/*/src/api.ts` and sent as `X-App-Version`. Bump it there; generated
   native projects pick it up on the next `expo prebuild --clean`. Raise `android.versionCode` and
   `ios.buildNumber` (now 2) for each build handed to a device.
+- `expo-dev-client` is a till dependency for its iPad development build only. Keep it out of
+  release builds: Android autolinking excludes its modules (`apps/till/package.json`), its plugin
+  generates no `exp+` scheme (`apps/till/app.json`), and pnpm does not hoist it
+  (`pnpm-workspace.yaml`), or the student app picks up its config plugin. After changing any of
+  these, compare a release APK's manifest, permissions and size with the previous build.
+- Never commit `ios.appleTeamId`: the personal signing team lives in the git-ignored `apps/*/ios`
+  projects; Expo CLI writes it into `app.json` after a clean iOS prebuild.
 - Android builds need JDK 17. `~/.gradle/gradle.properties` on this Mac pins JDK 11 globally; leave it,
   and build through `pnpm apk:*`, which passes `-Dorg.gradle.java.home` for JDK 17.
 - Styling: NativeWind 4 + Tailwind 3 with the shared preset `@mensa/shared/tailwind-preset`

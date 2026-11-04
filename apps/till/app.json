@@ -39,6 +39,12 @@
           "configureAndroidBackup": true,
           "faceIDPermission": false
         }
+      ],
+      [
+        "expo-dev-client",
+        {
+          "addGeneratedScheme": false
+        }
       ]
     ]
   }

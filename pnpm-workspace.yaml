@@ -14,3 +14,12 @@ useNodeVersion: 24.22.2
 # its platform binary, which pnpm already installs as an optional dependency, so it stays off.
 ignoredBuiltDependencies:
   - esbuild
+
+# expo-dev-client is a dependency of the till only (its iPad development build). pnpm's command
+# shims put the shared hoist folder on NODE_PATH, and Expo prebuild applies the dev client's config
+# plugin whenever it can resolve the package, so a hoisted copy gave the student app a
+# development-only `exp+mensa-student` URL scheme in its release build. Not hoisting it keeps the
+# plugin to the app that declares the dependency.
+hoistPattern:
+  - '*'
+  - '!expo-dev-client'
