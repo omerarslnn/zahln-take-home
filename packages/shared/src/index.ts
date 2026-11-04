@@ -20,4 +20,13 @@ export { parseEuroAmount, type EuroInput } from './format/euro-input';
 export { formatCents } from './format/money';
 export { de, en, type MessageKey } from './i18n/messages';
 export { LOCALES, pickLocale, translate, type Locale, type MessageParams } from './i18n/translate';
-export { colors, radius, touchTarget, type ColorToken } from './tokens';
+export {
+  colors,
+  iconSize,
+  motion,
+  radius,
+  space,
+  touchTarget,
+  typeScale,
+  type ColorToken,
+} from './tokens';
