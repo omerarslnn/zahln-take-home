@@ -12,7 +12,7 @@
     "ios": {
       "bundleIdentifier": "dev.omerarslan.mensa.student",
       "supportsTablet": false,
-      "buildNumber": "3"
+      "buildNumber": "4"
     },
     "android": {
       "package": "dev.omerarslan.mensa.student",
@@ -20,12 +20,13 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#1D4ED8"
       },
-      "versionCode": 3,
+      "versionCode": 4,
       "blockedPermissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
-        "android.permission.SYSTEM_ALERT_WINDOW"
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.ACCESS_WIFI_STATE"
       ]
     },
     "experiments": {

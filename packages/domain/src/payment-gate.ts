@@ -43,13 +43,21 @@ export function evaluatePaymentPolicy(
 }
 
 /**
- * Keeps the current gate state: refreshed from GET /config at start-up and before every new
- * payment, and tightened when the server refuses a payment despite a passing pre-check
- * (426 app_version_unsupported, 503 payments_disabled), because the server is authoritative.
+ * Keeps the current gate state, read from GET /config at start-up, before every new payment and
+ * whenever `GateRecovery` asks, and tightened when the server refuses a payment despite a passing
+ * pre-check (426 app_version_unsupported, 503 payments_disabled), because the server is
+ * authoritative.
+ *
+ * Only the newest read decides. A read overtaken by a newer read or by a refusal changes nothing
+ * when it answers late, and whoever awaits it gets the newest outcome instead: an answer to a
+ * request sent before the connection dropped, or before a refusal, never reopens payments.
  */
 export class PaymentGate {
   private current: GateState = { status: 'checking' };
-  private refreshing: Promise<GateState> | null = null;
+  /** Grows with every read and refusal; a read's answer counts only while it holds the newest. */
+  private ticket = 0;
+  /** The newest read while it is on its way. */
+  private reading: Promise<GateState> | null = null;
   private readonly listeners = new Set<() => void>();
 
   constructor(
@@ -61,28 +69,38 @@ export class PaymentGate {
     return this.current;
   }
 
+  /** Whether a configuration read is on its way; listeners hear when this changes too. */
+  isRefreshing(): boolean {
+    return this.reading !== null;
+  }
+
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   }
 
-  /** Reads the configuration once; concurrent callers share the same request. */
-  refresh(): Promise<GateState> {
-    this.refreshing ??= this.fetchConfig()
-      .then((result) => {
-        this.set(
-          evaluatePaymentPolicy(this.appVersion, result.kind === 'success' ? result.data : null),
-        );
-        return this.current;
-      })
-      .finally(() => {
-        this.refreshing = null;
-      });
-    return this.refreshing;
+  /**
+   * Reads the configuration. Callers share the read already on its way, so a burst of triggers
+   * sends one request. `fresh` starts a new read that overtakes it, for when that read may have
+   * left on a connection that has since gone and could hang until the transport's timeout.
+   */
+  refresh(options: { fresh?: boolean } = {}): Promise<GateState> {
+    if (this.reading && !options.fresh) return this.reading;
+    const ticket = (this.ticket += 1);
+    const reading = this.fetchConfig().then(
+      (result) => this.settle(ticket, result.kind === 'success' ? result.data : null),
+      () => this.settle(ticket, null),
+    );
+    this.reading = reading;
+    this.notify();
+    return reading;
   }
 
-  /** The server refused a payment for a gate reason; block until a refresh says otherwise. */
+  /** The server refused a payment for a gate reason; block until a later read says otherwise. */
   noteServerRefusal(code: 'app_version_unsupported' | 'payments_disabled'): void {
+    // Reads on their way left before this refusal: their answers no longer count.
+    this.ticket += 1;
+    this.reading = null;
     this.set(
       code === 'payments_disabled'
         ? { status: 'blocked', reason: 'payments_paused' }
@@ -96,8 +114,20 @@ export class PaymentGate {
     );
   }
 
+  /** Applies a read's answer while it is the newest; an overtaken read defers to the newest. */
+  private settle(ticket: number, config: AppConfig | null): GateState | Promise<GateState> {
+    if (ticket !== this.ticket) return this.reading ?? this.current;
+    this.reading = null;
+    this.set(evaluatePaymentPolicy(this.appVersion, config));
+    return this.current;
+  }
+
   private set(next: GateState): void {
     this.current = next;
+    this.notify();
+  }
+
+  private notify(): void {
     for (const listener of this.listeners) listener();
   }
 }

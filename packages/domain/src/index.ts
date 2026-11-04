@@ -11,6 +11,13 @@ export {
   type Basket,
 } from './basket';
 export {
+  CONNECTIVITY_SETTLE_MS,
+  GATE_RETRY_DELAYS_MS,
+  GateRecovery,
+  type ConnectivitySource,
+  type GateChecks,
+} from './gate-recovery';
+export {
   canCloseUnshownOrder,
   isFinal,
   needsReads,

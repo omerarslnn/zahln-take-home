@@ -6,14 +6,15 @@ import {
   type PayOrderIntent,
   type PaymentBinding,
 } from '@mensa/domain';
-import { formatCents, type MessageKey, type MessageParams } from '@mensa/shared';
+import { formatCents } from '@mensa/shared';
 import { useI18n } from '@mensa/shared/react';
 import { useIsFocused } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
+import { gateAnnouncement, paymentsOpen } from '../availability';
 import { Card, LabelledValue } from '../components/Foundation';
-import { gateAnnouncement, gateMessage } from '../components/PaymentAvailability';
+import { AvailabilityNotice } from '../components/PaymentAvailability';
 import { priceGroupKey } from '../components/payment-text';
 import {
   Body,
@@ -22,11 +23,10 @@ import {
   Screen,
   useAccessibilityFocus,
   useAnnouncement,
-  type Tone,
 } from '../components/ui';
 import { authenticateLocally } from '../local-auth';
 import type { RootStackParamList } from '../navigation';
-import { notAllowedText } from '../payment-outcome';
+import { afterPayAttempt, type ScreenMessage } from '../payment-outcome';
 import {
   useControllerRevision,
   usePaymentGate,
@@ -36,7 +36,6 @@ import {
 import { useOrder } from '../useOrder';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Review'>;
-type Message = { tone: Tone; key: MessageKey; params?: MessageParams };
 
 /**
  * Shows the scanned order as the server prices it for this payer, and pays exactly that after local
@@ -56,7 +55,8 @@ export function ReviewScreen({ route, navigation }: Props) {
     new PaymentAuthorizer(() => services?.session.user()?.id ?? null),
   ).current;
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<Message | null>(null);
+  // Never a copy of the gate's state: the availability notice below reads the live gate.
+  const [message, setMessage] = useState<ScreenMessage | null>(null);
 
   // What the screen shows, for the check after the prompt. Every change the payer must see again
   // (state, version, amount) is a new review: an authorization given for the previous one is not
@@ -73,7 +73,7 @@ export function ReviewScreen({ route, navigation }: Props) {
     };
   });
   const summaryRef = useAccessibilityFocus<View>(order ? order.id : null);
-  // Payments paused (or an update needed) while the payer reviews an open order: said once.
+  // Availability changing while the payer reviews an open order (stopped, or back): said once.
   useAnnouncement(order?.status === 'open' ? gateAnnouncement(gate, t) : null, true);
 
   // This payer's earlier action for this order: an unresolved one is resumed, never duplicated.
@@ -93,7 +93,7 @@ export function ReviewScreen({ route, navigation }: Props) {
     order?.status === 'open' &&
     amount !== null &&
     expiry !== 'expired' &&
-    gate?.status === 'open' &&
+    paymentsOpen(gate) &&
     controller !== null &&
     !unresolved &&
     !paidByMe;
@@ -128,36 +128,15 @@ export function ReviewScreen({ route, navigation }: Props) {
         ),
     });
     setBusy(false);
-    switch (outcome.type) {
-      case 'busy':
-        return;
-      case 'not_authorized':
-        setMessage({
-          tone: outcome.reason === 'cancelled' ? 'neutral' : 'error',
-          key: `auth.${outcome.reason}`,
-        });
-        return;
-      case 'invalidated':
-        setMessage({ tone: 'warning', key: 'review.changed' });
-        return;
-      case 'done': {
-        const started = outcome.result;
-        if (started.type === 'submitted' || started.type === 'existing') {
-          // Back from the result goes home, not to a review of an order that is being paid.
-          navigation.reset({
-            index: 1,
-            routes: [{ name: 'Home' }, { name: 'Result', params: { key: started.intent.key } }],
-          });
-        } else if (started.type === 'conflict') {
-          setMessage({ tone: 'warning', key: 'review.conflict' });
-        } else if (started.type === 'blocked') {
-          setMessage(gateMessage(started.gate));
-        } else if (started.type === 'not_allowed') {
-          setMessage({ tone: 'error', key: notAllowedText(started.reason) });
-        } else {
-          setMessage({ tone: 'error', key: 'review.storageFailed' });
-        }
-      }
+    const next = afterPayAttempt(outcome);
+    if (next.type === 'show_result') {
+      // Back from the result goes home, not to a review of an order that is being paid.
+      navigation.reset({
+        index: 1,
+        routes: [{ name: 'Home' }, { name: 'Result', params: { key: next.key } }],
+      });
+    } else {
+      setMessage(next.message);
     }
   }
 
@@ -228,9 +207,7 @@ export function ReviewScreen({ route, navigation }: Props) {
         secondsLeft={secondsLeft}
       />
 
-      {gate && gate.status !== 'open' && order.status === 'open' ? (
-        <Notice tone="warning" title={t(gateMessage(gate).key, gateMessage(gate).params)} />
-      ) : null}
+      {order.status === 'open' ? <AvailabilityNotice gate={gate} /> : null}
 
       {unresolved || paidByMe ? (
         <Notice tone="neutral" title={t(unresolved ? 'review.alreadyStarted' : 'review.paidByYou')}>
@@ -243,7 +220,7 @@ export function ReviewScreen({ route, navigation }: Props) {
       ) : null}
 
       {message ? (
-        <Notice tone={message.tone} title={t(message.key, message.params)}>
+        <Notice tone={message.tone} title={t(message.key)}>
           {message.key === 'auth.not_enrolled' ? <Body>{t('auth.enrollHelp')}</Body> : null}
         </Notice>
       ) : null}

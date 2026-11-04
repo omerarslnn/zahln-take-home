@@ -1,13 +1,16 @@
-// Wires the platform-neutral payment domain into the app: one PaymentGate, SessionCoordinator and
-// SecureStore-backed IntentStore per app process, and one IntentController per signed-in user.
-// The student app has an identical copy; each app passes its own polling budget.
+// Wires the platform-neutral payment domain into the app: one PaymentGate, GateRecovery,
+// SessionCoordinator and SecureStore-backed IntentStore per app process, and one IntentController
+// per signed-in user. Each app passes its own polling budget and gate checks.
+// The student app has an identical copy.
 import type { User } from '@mensa/api';
 import {
   createScopedApi,
+  GateRecovery,
   IntentController,
   PaymentGate,
   realScheduler,
   SessionCoordinator,
+  type GateChecks,
   type GateState,
   type PollingOptions,
   type ScopedApi,
@@ -44,6 +47,9 @@ function createServices() {
 
 type Services = NonNullable<ReturnType<typeof createServices>>;
 
+/** Without `gateChecks`, availability is read at start-up and in the foreground only. */
+const FOREGROUND_READS_ONLY: GateChecks = { retryDelaysMs: [] };
+
 export type SignInOutcome = SignInResult | { ok: false; reason: 'not_configured' };
 
 interface PaymentServicesValue {
@@ -63,6 +69,8 @@ interface PaymentServicesValue {
   /** Signs a seeded test account in; the password stays in this module. */
   signIn: (username: string) => Promise<SignInOutcome>;
   signOut: () => void;
+  /** Reads payment availability again now (a "check again" button). */
+  checkPaymentsAgain: () => void;
 }
 
 const PaymentServicesContext = createContext<PaymentServicesValue>({
@@ -73,15 +81,22 @@ const PaymentServicesContext = createContext<PaymentServicesValue>({
   recordsUnavailable: false,
   signIn: () => Promise.resolve({ ok: false, reason: 'not_configured' }),
   signOut: () => undefined,
+  checkPaymentsAgain: () => undefined,
 });
 
 export function PaymentServicesProvider({
   children,
   polling,
+  gateChecks,
 }: {
   children: ReactNode;
   /** Pass a constant: a new object would rebuild the controller. */
   polling?: PollingOptions;
+  /**
+   * When payment availability is also read again: the student passes its connectivity source
+   * and keeps the default spaced retries. Pass a constant.
+   */
+  gateChecks?: GateChecks;
 }) {
   const [services] = useState(createServices);
   const [loaded, setLoaded] = useState<{ controller: IntentController; api: ScopedApi } | null>(
@@ -89,6 +104,7 @@ export function PaymentServicesProvider({
   );
   const [recordsUnavailable, setRecordsUnavailable] = useState(false);
   const controllerRef = useRef<IntentController | null>(null);
+  const recoveryRef = useRef<GateRecovery | null>(null);
   const user = useSyncExternalStore(
     useCallback(
       (listener: () => void) => services?.session.subscribe(listener) ?? noop,
@@ -139,22 +155,32 @@ export function PaymentServicesProvider({
     };
   }, [services, userId, role, polling]);
 
-  // Configuration is read at start-up and on every return to the foreground. Monotonic clocks can
-  // pause while the device sleeps, so server time is learned again from the next response. Polling
-  // pauses in the background; nothing is ever resent on these events.
+  // Configuration is read at start-up and on every return to the foreground; with `gateChecks`
+  // also when the connection comes back and at spaced intervals after a read without an answer
+  // (GateRecovery). Monotonic clocks can pause while the device sleeps, so server time is learned
+  // again from the next response. Polling pauses in the background; nothing is ever resent on
+  // these events.
   useEffect(() => {
     if (!services) return;
-    void services.gate.refresh();
+    const recovery = new GateRecovery(
+      services.gate,
+      realScheduler,
+      gateChecks ?? FOREGROUND_READS_ONLY,
+    );
+    recoveryRef.current = recovery;
+    recovery.start();
     const subscription = AppState.addEventListener('change', (state) => {
       const active = state === 'active';
-      if (active) {
-        serverClock.invalidate();
-        void services.gate.refresh();
-      }
+      if (active) serverClock.invalidate();
+      recovery.setForeground(active);
       controllerRef.current?.setActive(active);
     });
-    return () => subscription.remove();
-  }, [services]);
+    return () => {
+      subscription.remove();
+      recovery.dispose();
+      recoveryRef.current = null;
+    };
+  }, [services, gateChecks]);
 
   const signIn = useCallback(
     async (username: string): Promise<SignInOutcome> => {
@@ -164,6 +190,7 @@ export function PaymentServicesProvider({
     [services],
   );
   const signOut = useCallback(() => services?.session.signOut(), [services]);
+  const checkPaymentsAgain = useCallback(() => void recoveryRef.current?.checkNow(), []);
 
   const value = useMemo(
     () => ({
@@ -174,8 +201,9 @@ export function PaymentServicesProvider({
       recordsUnavailable,
       signIn,
       signOut,
+      checkPaymentsAgain,
     }),
-    [services, user, loaded, recordsUnavailable, signIn, signOut],
+    [services, user, loaded, recordsUnavailable, signIn, signOut, checkPaymentsAgain],
   );
   return (
     <PaymentServicesContext.Provider value={value}>{children}</PaymentServicesContext.Provider>
@@ -192,6 +220,15 @@ export function usePaymentGate(): GateState | null {
   return useSyncExternalStore(
     useCallback((listener: () => void) => services?.gate.subscribe(listener) ?? noop, [services]),
     () => services?.gate.state() ?? null,
+  );
+}
+
+/** Whether payment availability is being read right now (a busy "check again" button). */
+export function useGateRefreshing(): boolean {
+  const { services } = usePaymentServices();
+  return useSyncExternalStore(
+    useCallback((listener: () => void) => services?.gate.subscribe(listener) ?? noop, [services]),
+    () => services?.gate.isRefreshing() ?? false,
   );
 }
 

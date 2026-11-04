@@ -31,6 +31,11 @@ export class FakeScheduler implements Scheduler {
     };
   }
 
+  /** Timers that have not run yet; something stopped or disposed must leave none behind. */
+  pending(): number {
+    return this.timers.length;
+  }
+
   async advance(ms: number): Promise<void> {
     const end = this.now() + ms;
     for (;;) {

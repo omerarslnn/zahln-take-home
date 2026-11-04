@@ -2,12 +2,12 @@
 // payer app's version (X-App-Version on POST /orders/{orderId}/payments), never the till's.
 // There is deliberately no "Update" button: the API provides no store URL to send it to.
 import type { GateState } from '@mensa/domain';
-import type { MessageKey, MessageParams } from '@mensa/shared';
 import { useI18n } from '@mensa/shared/react';
 import { Text, View } from 'react-native';
-import { usePaymentGate } from '../payments/PaymentServices';
+import { availabilityNotice, gateAnnouncement, gateMessage } from '../availability';
+import { useGateRefreshing, usePaymentGate, usePaymentServices } from '../payments/PaymentServices';
 import { Card } from './Foundation';
-import { useAnnouncement, type Tone } from './ui';
+import { Body, Button, Notice, useAnnouncement, type Tone } from './ui';
 
 const DOT: Record<Tone, string> = {
   ok: 'bg-success',
@@ -17,7 +17,7 @@ const DOT: Record<Tone, string> = {
   neutral: 'bg-line',
 };
 
-/** The gate state in words; a block that starts while the screen is open is announced. */
+/** The gate state in words (home, diagnostics); a change while the screen is open is announced. */
 export function PaymentAvailability() {
   const { t } = useI18n();
   const gate = usePaymentGate();
@@ -29,52 +29,43 @@ export function PaymentAvailability() {
         <View className={`mt-1.5 h-3 w-3 rounded-full ${DOT[tone]}`} />
         <Text className="flex-1 text-base text-ink">{t(key, params)}</Text>
       </View>
+      {availabilityNotice(gate)?.recheck ? <RecheckButton /> : null}
     </Card>
   );
 }
 
 /**
- * What to say when payments stop being possible (paused, update needed); null while they are open
- * or being checked, because "checking… available" on every screen visit is not news.
+ * The one availability notice of a payment screen (review, result), for the gate state the screen
+ * renders with; nothing while payments are open. `detail` says what waits for availability.
  */
-export function gateAnnouncement(
-  gate: GateState | null,
-  t: (key: MessageKey, params?: MessageParams) => string,
-): string | null {
-  if (gate?.status !== 'blocked') return null;
-  const { key, params } = gateMessage(gate);
-  return t(key, params);
+export function AvailabilityNotice({ gate, detail }: { gate: GateState | null; detail?: string }) {
+  const { t } = useI18n();
+  const notice = availabilityNotice(gate);
+  if (!notice) return null;
+  return (
+    <View className="gap-2">
+      <Notice tone={notice.tone} title={t(notice.key, notice.params)}>
+        {detail ? <Body>{detail}</Body> : null}
+      </Notice>
+      {notice.recheck ? <RecheckButton /> : null}
+    </View>
+  );
 }
 
-export function gateMessage(gate: GateState | null): {
-  tone: Tone;
-  key: MessageKey;
-  params?: MessageParams;
-} {
-  if (!gate) return { tone: 'error', key: 'payments.notConfigured' };
-  if (gate.status === 'checking') return { tone: 'neutral', key: 'payments.checking' };
-  if (gate.status === 'open') return { tone: 'ok', key: 'payments.open' };
-  switch (gate.reason) {
-    case 'update_required':
-      // An empty minimum means the server refused the version (426) without a config to say
-      // which version it needs.
-      return gate.minimum
-        ? {
-            tone: 'error',
-            key: 'payments.updateRequired',
-            params: { current: gate.current, minimum: gate.minimum },
-          }
-        : {
-            tone: 'error',
-            key: 'payments.updateRequiredUnknown',
-            params: { current: gate.current },
-          };
-    case 'payments_paused':
-      return { tone: 'warning', key: 'payments.paused' };
-    case 'config_unavailable':
-      return { tone: 'warning', key: 'payments.configUnavailable' };
-    case 'invalid_app_version':
-    case 'invalid_min_version':
-      return { tone: 'error', key: 'payments.invalidVersion' };
-  }
+/**
+ * Reads payment availability again on request. Outside the notice's text group, so screen readers
+ * reach it as a button of its own; busy, and so not tappable, while a read is on its way.
+ */
+function RecheckButton() {
+  const { t } = useI18n();
+  const { checkPaymentsAgain } = usePaymentServices();
+  const checking = useGateRefreshing();
+  return (
+    <Button
+      tone="secondary"
+      label={t('payments.recheck')}
+      busy={checking}
+      onPress={checkPaymentsAgain}
+    />
+  );
 }

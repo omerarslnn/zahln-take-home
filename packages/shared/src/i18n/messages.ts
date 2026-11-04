@@ -37,6 +37,7 @@ export const en = {
     'Payment availability could not be checked. New payments stay blocked until it can be.',
   'payments.invalidVersion': 'The app or server version is invalid, so new payments are blocked.',
   'payments.notConfigured': 'The API is not configured, so payments are unavailable.',
+  'payments.recheck': 'Check availability again',
 
   'storage.title': 'Secure storage check',
   'storage.description':
@@ -161,6 +162,7 @@ export const en = {
   'result.sendNow': 'Send now',
   'result.sendAgainHint': 'Sends the same payment again. The server pays it at most once.',
   'result.sendInvalidated': 'Nothing was sent: this payment changed meanwhile.',
+  'result.resendWaits': 'Sending again is possible once payments are available.',
   'result.tryAgain': 'Try again with a new confirmation',
   'result.details': 'Payment details',
   'result.replay.server_time_unknown':
@@ -627,6 +629,7 @@ export const de: Record<MessageKey, string> = {
   'payments.invalidVersion':
     'Die App- oder Serverversion ist ungültig, daher sind neue Zahlungen gesperrt.',
   'payments.notConfigured': 'Die API ist nicht konfiguriert, daher sind Zahlungen nicht möglich.',
+  'payments.recheck': 'Verfügbarkeit erneut prüfen',
 
   'storage.title': 'Prüfung des sicheren Speichers',
   'storage.description':
@@ -758,6 +761,7 @@ export const de: Record<MessageKey, string> = {
   'result.sendNow': 'Jetzt senden',
   'result.sendAgainHint': 'Sendet dieselbe Zahlung erneut. Der Server bucht sie höchstens einmal.',
   'result.sendInvalidated': 'Nichts gesendet: Diese Zahlung hat sich inzwischen geändert.',
+  'result.resendWaits': 'Erneut senden ist möglich, sobald Zahlungen verfügbar sind.',
   'result.tryAgain': 'Mit neuer Bestätigung erneut versuchen',
   'result.details': 'Zahlungsdetails',
   'result.replay.server_time_unknown':
