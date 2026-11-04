@@ -493,7 +493,8 @@ The build number used on each device was not recorded.
 **Not run on a device**: S2, S3 (camera permission denied), S5–S7 (foreign QR, wrong code, expiry),
 S12 (maximum font sizes), S13 (German), N2 (send again after an unknown outcome), N3 (a real lost
 response), N4 (a payment that stays pending), N6 (force stop with a genuinely unresolved payment),
-N8 (account switch with an unresolved payment), N9 (BUG-01, fails today), H2, T2, A1–A4 (TalkBack,
+N8 (account switch with an unresolved payment), N9 (BUG-01's device check; build 4 is ready, see
+Phase 1), H2, T2, A1–A4 (TalkBack,
 VoiceOver), D1–D4 (dashboard manual checks), and S10 on the iPhone.
 
 **Covered only by simulated-server tests**, not by a device: a lost response the server applied
@@ -501,7 +502,10 @@ VoiceOver), D1–D4 (dashboard manual checks), and S10 on the iPhone.
 not an OS process kill), an unknown refund outcome, the retention window, stale reads, and account
 isolation of saved intents.
 
-### BUG-01: payment-availability warnings on the student's review screen (open)
+### BUG-01: payment-availability warnings on the student's review screen (fixed in Phase 1)
+
+Fixed in `deedd3e` (student build 4); causes, fix and evidence in [Phase 1](#phase-1-bug-01-payment-availability-in-the-foreground-2026-11-04).
+The record below is as written in Phase 0.
 
 **Observed** (Pixel XL, 2026-11-04): with the review screen open and the internet off, the
 availability warning appeared twice. After reconnecting and returning the app to the foreground,
@@ -548,6 +552,151 @@ with `cmd connectivity airplane-mode enable|disable` and screenshots; then N9 on
 | `pnpm dashboard:browser-check -- --url https://zahln-mensa-dashboard-4ft.pages.dev/` | passed (36/36) | 15:32 CET                                                                              |
 | Release APK comparisons                                                              | see above      | Four arm64 builds, compared with build 3                                               |
 
+## Phase 1: BUG-01, payment availability in the foreground (2026-11-04)
+
+Fixed in `deedd3e`; student build 4 carries it. N9, the acceptance test on the Pixel XL, is still to
+be run by the owner.
+
+### Causes, confirmed on the unchanged code (`f84e442`)
+
+Four characterization tests asserted the behaviour of `f84e442` as it was (not committed: the fix
+inverts them); all four passed.
+
+1. **Nothing re-checked while the app stayed in front.** `PaymentGate.refresh` ran only at start-up,
+   on `AppState` `active` (`PaymentServices`) and before a new payment or resend
+   (`IntentController`). After a failed read the gate stayed `config_unavailable` with the network
+   back, and the review screen hides "Pay" while blocked, so the pre-payment check could not run
+   either.
+2. **A stored copy of the gate next to the live one.** A blocked pay attempt returns the gate's
+   state; `ReviewScreen` stored it as its message (`setMessage(gateMessage(started.gate))`) and also
+   rendered the live gate: the same warning twice. The stored copy stayed blocked after a refresh had
+   opened payments: a stale warning next to "Pay". `ResultScreen` stored the same copy after a
+   blocked resend.
+3. **Late reads decided.** `refresh` shared the read on its way (`refreshing ??=`), so a read that
+   left offline (it can hang until the 15-second transport timeout) answered a refresh asked for
+   after the network was back. Found while investigating, not observed on a device: a read that left
+   before a server refusal (`503 payments_disabled`) reopened payments when it answered later.
+
+### Fixes
+
+- **Only the newest read decides** (`PaymentGate`): every read and every server refusal takes a
+  ticket; an answer counts only while its ticket is the newest, and whoever awaits an overtaken read
+  gets the newest outcome. Callers still share a read on its way; `refresh({ fresh: true })` starts
+  one that overtakes it. A read that throws fails closed. `isRefreshing()` drives a busy button.
+- **When to read again** (`GateRecovery`, new in `@mensa/domain`): at start-up; on every return to
+  the foreground (afresh if the connection came back meanwhile); when the connection comes back while
+  the app is in front, after it has held for 1 second, as a fresh read; after a read without a usable
+  answer at 5, 15, 30 and 60 seconds, then not again until one of those events or the user's request;
+  and on "Check availability again". A paused kill switch or a higher minimum version is an answer and
+  is not re-read on a timer. Nothing runs in the background; dispose stops every timer and listener.
+  A connectivity event only schedules a read: payments open only when `GET /config` says so, so the
+  kill switch, the minimum version and the fail-closed rule are unchanged.
+- **Connectivity source** (`apps/student/src/payments/connectivity.ts`): `expo-network`'s listener,
+  one native subscription for the app's lifetime shared by subscribers; "online" means connected and
+  not known to lack internet access. Loaded by a dynamic import, so a build without the native module
+  (the iPhone development build made before this change) reports nothing and keeps the other
+  triggers.
+- **One live warning** (`apps/student/src/availability.ts`, `AvailabilityNotice`): the review and
+  result screens derive their one availability notice from the live gate on every render and keep no
+  copy (`afterPayAttempt` and `afterResend` keep nothing for a blocked attempt; every other reason
+  nothing was sent stays visible). A screen shows the notice or its pay action, never both; "Send
+  again" on the result screen now waits for the gate as well. "Check availability again" sits outside
+  the notice's text group, so screen readers reach it as a button; it is busy while a read is on its
+  way, and also appears on the home and diagnostics card where a new answer could help (no answer,
+  paused, invalid server minimum; not for an outdated app). A block and "Payments are available."
+  are announced through `useAnnouncement`, once per change, on the focused screen only.
+- Unchanged: the intent controller, idempotency keys and payloads, saved intents,
+  `PaymentAuthorizer`, the session coordinator and navigation. The till passes no gate checks and
+  keeps reading at start-up and in the foreground only; its `PaymentServices` copy is identical to the
+  student's apart from the header line.
+
+### Dependency: `expo-network ~8.0.8`
+
+| Question            | Answer                                                                                                                                                                                                                                                                         |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Why this one        | The version SDK 54 pins (`expo install`), first-party, no config plugin. iOS: `NWPathMonitor`. Android: a `ConnectivityManager` network callback. `@react-native-community/netinfo` 11.4.1 (SDK 54's version) reports more than the gate needs.                                |
+| Android permissions | It declares `ACCESS_NETWORK_STATE` (build 3 already had it) and `ACCESS_WIFI_STATE`, which only its unused `getIpAddressAsync` needs: blocked in `app.json`. Build 4 has build 3's seven permissions.                                                                          |
+| Release size        | +10,044 bytes per APK (classes2.dex +12,772 bytes, JavaScript bundle +10,024 bytes); no native library.                                                                                                                                                                        |
+| Both apps' builds   | Student: autolinked on Android and iOS. Till: the autolinking result is unchanged on both platforms (`expo-modules-autolinking resolve`, before and after); the package is in none of Expo prebuild's plugin lists; the till's exported bundles do not contain the module.     |
+| iOS                 | The iPhone development build must be built again (`expo run:ios --device`) to include the module; until then the app works without connectivity events. No iOS build was made in this phase.                                                                                   |
+| Known limits        | Android: events only on `onAvailable`/`onLost`, so a change can be missed; the spaced retries cover that. iOS: the module cancels its path monitor when its last listener goes and restarts the cancelled monitor for the next one; hence one listener for the app's lifetime. |
+
+### Tests
+
+24 new tests (153 → 177): 4 gate-read tests in `payment-gate.test.ts`, 12 in
+`gate-recovery.test.ts`, 4 in `apps/student/src/availability.test.ts` (the real controller, gate
+and recovery on the simulated server, and the values the screens render), 4 in
+`apps/student/src/payments/connectivity.test.ts`. The root `pnpm test` now includes
+`apps/student/src`.
+
+| Required case                                                 | Covered by                                                                                                                 |
+| ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Offline → online in the foreground                            | recovery: "offline → online in the foreground"; availability: "review: one warning while blocked, then none"               |
+| A reconnection sends a fresh `GET /config`                    | recovery: "a returned connection sends a fresh GET /config", and the two "while the app is away" cases                     |
+| Connectivity back, server unreachable                         | recovery: stays blocked, re-reads at 5/15/30/60 s, then stops; the user's check then opens                                 |
+| Reconnection with payments disabled                           | recovery: "payments switched off meanwhile": paused, no timer re-reads                                                     |
+| Reconnection with a minimum-version update required           | recovery: "a higher minimum version"                                                                                       |
+| A stale or delayed earlier request after a newer one          | gate: a fresh read overtakes a hung one; an older "open" after a newer "paused"; a read before a refusal                   |
+| Exactly one relevant warning on Review                        | availability: the review flow; "either the notice or the pay action"; "a blocked attempt keeps nothing"                    |
+| The warning disappears once the gate is open                  | availability: the review flow                                                                                              |
+| Result after a blocked resend                                 | availability: no copy kept, "Send again" waits, then the same request once, one payment                                    |
+| Repeated connectivity events, no duplicate or unbounded reads | recovery: a burst gives one read, a repeated "online" none, concurrent checks share one; connectivity: one native listener |
+| Background/foreground and listener cleanup                    | recovery: no reads or timers in the background, one read on return, nothing after dispose; connectivity: unsubscribe       |
+
+**Mutation check**: 27 mutations of the fix (tickets, fresh reads, the refusal guard, the settle
+wait, the retry bound, background and dispose, stored copies, notice-or-pay, the connectivity
+adapter), each run against the new tests: 27 killed. The first run left two survivors, which led to
+two stronger tests (dispose with a timer pending; only "open" pays).
+
+### Android emulator, before and after (2026-11-04)
+
+Medium Phone AVD, Android 16, arm64 (not the Pixel's Android 10; `expo-network` takes the same code
+path from Android 10 up). The same steps on both builds: an open order from the till app (build 3) on
+the same emulator, its review screen in the student app, airplane mode with
+`adb shell cmd connectivity airplane-mode enable|disable`, and "Pay" confirmed with the emulator's
+PIN while offline (the pre-payment check fails; nothing is sent). Results read from screenshots: the
+accessibility dump fails while the countdown ticks.
+
+| Step                                    | Build 3 (`1b75e2b`)                           | Build 4 (`deedd3e`, installed over build 3 with `install -r`)                                                                                 |
+| --------------------------------------- | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Offline, after "Pay"                    | Two identical "could not be checked" warnings | One warning and "Check availability again"; no "Pay"                                                                                          |
+| Online again, same screen, app in front | After 20 s: both warnings, no "Pay"           | At 2.8 s: the one warning, the button busy (the read is on its way); at 3.4 s: no warning, "Pay €2.20"; unchanged at 16 s with Wi-Fi back too |
+| Background, then foreground             | "Pay €2.20" enabled next to one stale warning | Not needed                                                                                                                                    |
+
+Four live orders (ledger in [api-notes.md](api-notes.md)); two runs ran out of the order's 5 minutes
+and were repeated. No payment was created: the till's list shows none after 14:48 that day. This is
+emulator evidence, not N9.
+
+### Release build 4 (student)
+
+| APK                                                       | Size             | SHA-256                                                            |
+| --------------------------------------------------------- | ---------------- | ------------------------------------------------------------------ |
+| `mensa-student-1.0.0-4-armeabi-v7a+arm64-v8a-deedd3e.apk` | 50,749,097 bytes | `5cec2e12c14f7d901f69932c720c5697da36231ee0d444bdf3835c0f7072e703` |
+| `mensa-student-1.0.0-4-arm64-v8a-deedd3e.apk`             | 35,906,038 bytes | `ba096d6fedf71713ed7d9f5e402dc23c2ce416045af8926bead47db67dca33d3` |
+
+Built from the clean commit `deedd3e` in `artifacts/android/` (git-ignored). The same debug signing
+certificate as build 3 (SHA-256 `fac61745…3b9c`), so it installs over build 3 and keeps the app's
+data: `adb -s <serial> install -r artifacts/android/mensa-student-1.0.0-4-armeabi-v7a+arm64-v8a-deedd3e.apk`.
+Against build 3: the manifest differs only in `versionCode` and the order of two permission entries;
+the same seven permissions; no new component or native library. iOS `buildNumber` is 4 as well; no
+iOS build was made. The till stays at build 3: its native build is unchanged, and its JavaScript
+changes only through the shared code (the `PaymentServices` copy, `PaymentGate`, `GateRecovery` with
+no connectivity and no retries), which reads at start-up and in the foreground as before; checked by
+typecheck, tests and its exported bundles, not on a device.
+
+### Checks (2026-11-04, fresh runs)
+
+| Check                                 | Result     | Notes                                                                                             |
+| ------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------- |
+| Characterization tests on `f84e442`   | 4/4 passed | Each confirms one cause; not committed                                                            |
+| `pnpm check`                          | passed     | 177 tests in 50 suites, Prettier, ESLint, typecheck, single instances, dashboard build            |
+| `pnpm bundle:native`                  | passed     | Both apps, iOS and Android; one bundle per platform; `expo-network` only in the student's bundles |
+| Mutation check of the fix             | passed     | 27/27 killed                                                                                      |
+| Student release APKs, build 4         | built      | Compared with build 3 above                                                                       |
+| Android emulator, build 3 and build 4 | done       | Above                                                                                             |
+| N9 on the Pixel XL                    | not run    | The owner's device check                                                                          |
+| TalkBack/VoiceOver on the new button  | not run    | Part of A1–A4                                                                                     |
+
 ## Manual steps
 
 1. **pnpm on PATH**: `corepack enable pnpm` (undo: `corepack disable pnpm`), or prefix commands with
@@ -558,7 +707,7 @@ with `cmd connectivity airplane-mode enable|disable` and screenshots; then N9 on
    Metro. It is public mock data, inlined into the apps and the dashboard.
 3. **Pixel XL (student)**: enable USB debugging; `adb devices -l`;
    `adb shell getprop ro.product.cpu.abilist` (expect `arm64-v8a,…`); then
-   `adb -s <serial> install -r artifacts/android/mensa-student-1.0.0-3-armeabi-v7a+arm64-v8a-1b75e2b.apk`
+   `adb -s <serial> install -r artifacts/android/mensa-student-1.0.0-4-armeabi-v7a+arm64-v8a-deedd3e.apk`
    (or the arm64 file). It replaces an earlier build in place and keeps its data. Set a PIN and enrol
    a fingerprint, then follow [manual-tests.md](manual-tests.md).
 4. **iPad (till)**: development build once with
@@ -581,7 +730,7 @@ with `cmd connectivity airplane-mode enable|disable` and screenshots; then N9 on
 
 ## Remaining for stage 5: submission
 
-1. Phase 1: fix BUG-01 against its acceptance criteria (above), then N9 on the Pixel XL.
+1. N9 on the Pixel XL with student build 4 (BUG-01 is fixed in code; see Phase 1).
 2. The UI polish phases agreed on 2026-11-04 (design system, sign-in, student and till screens),
    each with its own checks.
 3. Device checks not run yet: TalkBack, VoiceOver, maximum font sizes, N6 with a genuinely

@@ -240,12 +240,32 @@ now minus earliest first-attempt time); `expiryState` is a display hint that nev
 
 ### Gates
 
-`PaymentGate` reads `GET /config` at start-up, on every return to the foreground and before each new
-payment or payment retry. It compares versions numerically (1.10.0 > 1.2.0) and fails closed: an
+`PaymentGate` reads `GET /config` before each new payment or payment retry, and whenever
+`GateRecovery` asks. It compares versions numerically (1.10.0 > 1.2.0) and fails closed: an
 unparsable app or minimum version, or configuration that could not be read, blocks new payments. A
-`426 app_version_unsupported` or `503 payments_disabled` after a passing pre-check blocks until the
-next refresh. Reading and reconciling earlier payments is never gated. There is no update button: the
-API provides no store URL. The gate concerns the payer app; the till does not show it.
+`426 app_version_unsupported` or `503 payments_disabled` after a passing pre-check blocks until a
+later read. Only the newest read decides: every read and every such refusal takes a ticket, an
+answer counts only while its ticket is the newest, and whoever awaits an overtaken read gets the
+newest outcome. Callers share a read on its way; a fresh read overtakes it when it may have left on a
+connection that is gone (it could hang until the 15-second transport timeout). Reading and
+reconciling earlier payments is never gated. There is no update button: the API provides no store
+URL. The gate concerns the payer app; the till does not show it.
+
+`GateRecovery` decides when to read: at start-up; on every return to the foreground; when the
+connection comes back while the app is in front, once it has held for a second (handovers come in
+bursts), as a fresh read; after a read without a usable answer, at 5, 15, 30 and 60 seconds, then
+not again until one of those events or the user's "Check availability again"; and on that button.
+A paused kill switch or a higher minimum version is an answer and is not re-read on a timer. Nothing
+runs in the background. A connectivity report only schedules a read; it never opens payments. The
+student's source is `expo-network` (one native listener for the app's lifetime: on iOS the module
+cannot restart its path monitor once its last listener is removed); on Android it reports only
+`onAvailable`/`onLost`, so a change can be missed, which the spaced retries cover. The till passes no
+connectivity and no retries: start-up and foreground only.
+
+Screens never keep a copy of the gate's state: the review and result screens derive their one
+availability notice from the live gate on every render (`apps/student/src/availability.ts`), and a
+blocked attempt leaves no message behind. A screen shows that notice or its pay action, never both;
+"Send again" waits for the gate too.
 
 ### Intent records and storage
 
@@ -290,12 +310,12 @@ keeps the history.
 
 ### Native wiring
 
-`apps/*/src/payments/PaymentServices.tsx` creates one `PaymentGate`, `SessionCoordinator` and
-SecureStore-backed store per app process, and one `IntentController` plus one `ScopedApi` (the
-authenticated reads) per signed-in user, keyed by user ID and role so a 5-minute re-login keeps the
-controller. It signs a seeded account in by username; the password stays in that module. An
-`AppState` listener refreshes the gate, forgets the server-time estimate and pauses or resumes
-polling. If the user's records cannot be read, no controller is offered (`recordsUnavailable`) and
+`apps/*/src/payments/PaymentServices.tsx` creates one `PaymentGate`, `GateRecovery`,
+`SessionCoordinator` and SecureStore-backed store per app process, and one `IntentController` plus
+one `ScopedApi` (the authenticated reads) per signed-in user, keyed by user ID and role so a 5-minute
+re-login keeps the controller. It signs a seeded account in by username; the password stays in that
+module. An `AppState` listener tells `GateRecovery` about the foreground, forgets the server-time
+estimate and pauses or resumes polling; the effect's cleanup removes it and disposes the recovery. If the user's records cannot be read, no controller is offered (`recordsUnavailable`) and
 new payments stay blocked. Keys come from `expo-crypto`'s `randomUUID`. Screens re-render through
 `useControllerRevision`, whose snapshot is the controller's change counter: `controller.list()`
 returns a new array each call and must never be a `useSyncExternalStore` snapshot.
@@ -413,9 +433,9 @@ variable is missing instead of crashing.
 
 Minimum touch target: 48 dp/px (`min-h-touch`), measured as 126 px = 48 dp on the 420 dpi emulator.
 The language switch is a radio group (Android reports `RadioButton` with the checked state). Results
-are announced: an Android live region, an explicit VoiceOver announcement on iOS, and `aria-live` on
-the web. The payment gate card is a polite live region, so on Android a change (for example payments
-paused) is announced. Announcements go through one hook, `useAnnouncement`
+are announced: in the apps through `useAnnouncement` (below), on the web through `aria-live`. A change
+of payment availability on screen is announced the same way: why payments stopped, and "Payments
+are available." when the server opens them again. Announcements go through one hook, `useAnnouncement`
 (`AccessibilityInfo.announceForAccessibility`), which VoiceOver and TalkBack both speak; a message
 spoken there is not also put in an Android live region, so nothing is said twice. It speaks only
 while its screen is focused, once per change: a payment's outcome, its status on a detail screen,

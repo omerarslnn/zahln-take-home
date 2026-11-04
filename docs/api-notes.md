@@ -30,8 +30,10 @@ controls are assumed.
 
 ## Live writes ledger
 
-Every write ever sent to the mock (candidate `c_5b3ceacafb`). All went through the intent mechanism:
-saved with its idempotency key before sending, reused on a retry. Local evidence: `.local/` (git-ignored).
+Every write sent to the mock (candidate `c_5b3ceacafb`) by the scripts and the test runs in this
+repository. All went through the intent mechanism: saved with its idempotency key before sending,
+reused on a retry. Local evidence: `.local/` (git-ignored). Not itemized: the owner's physical-device
+tests on 2026-11-04 (payments, orders and refunds; see [progress.md](progress.md), Phase 0).
 
 | When (Berlin)     | Who                       | Write                                                   | Resource                                       | Result                                         |
 | ----------------- | ------------------------- | ------------------------------------------------------- | ---------------------------------------------- | ---------------------------------------------- |
@@ -41,6 +43,10 @@ saved with its idempotency key before sending, reused on a retry. Local evidence
 | 2026-11-01 11:53  | cashier-campus-2, staff   | order + payment (till and student apps, release builds) | `ord_ebb99f6c6bd7186a`, `pay_90d914f2be37a714` | confirmed, 580 cents (staff)                   |
 | 2026-11-01 12:06  | cashier-campus-2          | partial refund (till app)                               | `ref_c8c9e73384687eb4`                         | completed, 100 cents                           |
 | 2026-11-01 12:07  | cashier-campus-2          | full refund of the rest (till app)                      | `ref_4845b3bdc2c7cc3c`                         | completed, 480 cents                           |
+| 2026-11-04 16:24  | cashier-campus-1          | order (till app build 3, emulator; BUG-01 evidence)     | `ord_0f2b09ae0ed1a9d0`                         | expired unpaid (ran out of time)               |
+| 2026-11-04 16:31  | cashier-campus-1          | order (till app build 3, emulator; BUG-01 evidence)     | `ord_f775175e48e4a4cb`                         | expired unpaid (build 3 run)                   |
+| 2026-11-04 16:39  | cashier-campus-1          | order (till app build 3, emulator; BUG-01 evidence)     | `ord_29811730c70dad62`                         | expired unpaid (ran out of time)               |
+| 2026-11-04 16:46  | cashier-campus-1          | order (till app build 3, emulator; BUG-01 evidence)     | `ord_4426620cc8075837`                         | expired unpaid (build 4 run)                   |
 
 The two 2026-10-31 probe orders: one was intended. The second came from a bug: the first run saved
 its intent with a fractional `firstSentAt` (from `performance.now()`), the second run could not read

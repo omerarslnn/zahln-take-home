@@ -13,19 +13,20 @@ dashboard) in one TypeScript monorepo, built against the supplied mock API.
 > payment and refund flows on a Pixel XL (Android 10), an iPad A16 and an iPhone 17 Pro (Face ID) on
 > 2026-11-04. **Not yet verified**: TalkBack and VoiceOver, maximum font sizes, a force-stop with a
 > genuinely unresolved payment, a real lost response on a device, and some dashboard manual checks.
-> **Open: BUG-01** (payment-availability warnings on the review screen; see _Known blockers_). Design:
+> **BUG-01 fixed** in Phase 1 (student build 4); its device check N9 on the Pixel XL is still to run
+> (see _Known blockers_). Design:
 > [docs/design.md](docs/design.md). Records: [docs/progress.md](docs/progress.md).
 
 ## What exists today
 
-| Part                   | Implemented                                                                                                                                                                                                                                                                                                                     | Shell only / not yet                                     |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| `apps/student` (Expo)  | Seeded sign-in, QR scan or typed code, review with the server's amount, local authorization (biometric or device PIN), truthful result with safe resend, paginated history with unresolved actions, payment detail with refunds and history, DE/EN, screen-reader labels                                                        | BUG-01; screen-reader and maximum-font checks on devices |
-| `apps/till` (Expo)     | Seeded cashier sign-in, menu with per-group prices, basket, order with QR and countdown, follows paid/expired across restarts, payer's amount when paid, payment list and search, full and partial refunds, DE/EN, tablet layout                                                                                                | VoiceOver check on the iPad                              |
-| `apps/dashboard` (web) | Finance sign-in (public demo account), Berlin daily totals per mensa and till with "last fetched" and failed-refresh states, payments that need attention, filtered cursor-paged payments, payment detail with refunds and history, complete CSV export, DE/EN, diagnostics; deployed on Cloudflare Pages                       | Manual keyboard and screen-reader checks                 |
-| `packages/api`         | Types generated from the contract, transport (timeouts, headers, Problem parsing, server `Date`, replay flag), typed client for all ten operations with runtime validation, live smoke check                                                                                                                                    | n/a                                                      |
-| `packages/domain`      | Intents and their controller, write classification, session coordinator, server clock, payment gate, version reconciliation, bounded polling, QR and code parsing, authorization binding, scan lock, history paging, basket rules; `/finance`: read-only API with bounded retries, daily report store, cursor-chain export, CSV | n/a                                                      |
-| `packages/shared`      | DE/EN catalogues, euro-cent and Europe/Berlin formatting, Berlin calendar-day ranges across clock changes, design tokens + Tailwind preset, React i18n bindings                                                                                                                                                                 | n/a                                                      |
+| Part                   | Implemented                                                                                                                                                                                                                                                                                                                     | Shell only / not yet                                                       |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `apps/student` (Expo)  | Seeded sign-in, QR scan or typed code, review with the server's amount, local authorization (biometric or device PIN), truthful result with safe resend, paginated history with unresolved actions, payment detail with refunds and history, DE/EN, screen-reader labels                                                        | N9 (BUG-01) on the Pixel; screen-reader and maximum-font checks on devices |
+| `apps/till` (Expo)     | Seeded cashier sign-in, menu with per-group prices, basket, order with QR and countdown, follows paid/expired across restarts, payer's amount when paid, payment list and search, full and partial refunds, DE/EN, tablet layout                                                                                                | VoiceOver check on the iPad                                                |
+| `apps/dashboard` (web) | Finance sign-in (public demo account), Berlin daily totals per mensa and till with "last fetched" and failed-refresh states, payments that need attention, filtered cursor-paged payments, payment detail with refunds and history, complete CSV export, DE/EN, diagnostics; deployed on Cloudflare Pages                       | Manual keyboard and screen-reader checks                                   |
+| `packages/api`         | Types generated from the contract, transport (timeouts, headers, Problem parsing, server `Date`, replay flag), typed client for all ten operations with runtime validation, live smoke check                                                                                                                                    | n/a                                                                        |
+| `packages/domain`      | Intents and their controller, write classification, session coordinator, server clock, payment gate, version reconciliation, bounded polling, QR and code parsing, authorization binding, scan lock, history paging, basket rules; `/finance`: read-only API with bounded retries, daily report store, cursor-chain export, CSV | n/a                                                                        |
+| `packages/shared`      | DE/EN catalogues, euro-cent and Europe/Berlin formatting, Berlin calendar-day ranges across clock changes, design tokens + Tailwind preset, React i18n bindings                                                                                                                                                                 | n/a                                                                        |
 
 ## Prerequisites
 
@@ -182,7 +183,7 @@ The script runs `expo prebuild --clean` (regenerating the git-ignored `android/`
 `app.json`) and `gradlew assembleRelease` with JDK 17. The JavaScript is compiled to Hermes bytecode
 inside the APK, so it runs without Metro. File names carry the version, the Android build code, the
 ABIs and the source commit, with `-dirty` for a build from uncommitted changes, for example
-`mensa-student-1.0.0-3-armeabi-v7a+arm64-v8a-1b75e2b.apk`. Current builds, checksums and their
+`mensa-student-1.0.0-4-armeabi-v7a+arm64-v8a-deedd3e.apk`. Current builds, checksums and their
 verification: [docs/progress.md](docs/progress.md). All are signed with the React Native template
 **debug key** (installable and updatable over earlier builds from this repository, but not a Play Store
 build). EAS Build is the alternative route; it needs an Expo account and was not used.
@@ -246,15 +247,22 @@ More: [docs/design.md](docs/design.md) · [docs/architecture.md](docs/architectu
 | TypeScript 5.9, ESLint 9 (flat, type-aware), Prettier 3 | TypeScript 7 is not supported by typescript-eslint yet. ESLint 9 is deprecated upstream; ESLint 10 runs on the pinned Node 24 but is deferred to its own change.    |
 | `node:test` via tsx                                     | Platform-neutral logic is tested without a Jest/Babel setup.                                                                                                        |
 | expo-camera 17, expo-local-authentication 17            | SDK 54's own camera (with barcode scanning) and biometric/device-PIN prompt; both work in Expo Go on Android, and permissions are set in `app.json`.                |
+| expo-network 8 (student only)                           | SDK 54's own network-state listener, a hint to re-check payment availability when the connection returns; its unused `ACCESS_WIFI_STATE` is blocked.                |
 | Hash routes, no router or UI library in the dashboard   | Five screens; deep links survive any static host; small domain stores read through `useSyncExternalStore`.                                                          |
 | qrcode 1.5.4                                            | Mature QR encoder; the till draws its matrix with plain Views. react-native-qrcode-svg had eight releases in four days, and react-native-svg duplicated NativeWind. |
 
 ## Known blockers and limitations
 
-- **BUG-01 (open, fix planned in Phase 1):** on the student's review screen, an offline
-  payment-availability warning appears twice; after reconnecting and returning to the foreground,
-  "Pay" comes back but one stale warning stays. Reconnecting while the app stays in the foreground
-  does not re-check availability at all. Details and acceptance criteria:
+- **BUG-01 (fixed in Phase 1, device check pending):** build 3 showed an offline
+  payment-availability warning twice on the review screen, kept a stale one next to "Pay" after a
+  return to the foreground, and did not re-check availability while it stayed in front. Build 4
+  re-checks by itself when the connection returns (and a few times after a failed check), shows one
+  live warning with "Check availability again", and never keeps a copy. Verified with deterministic
+  tests and on an Android emulator; N9 on the Pixel XL is still to be run. Install build 4 over
+  build 3 without losing data:
+  `adb -s <serial> install -r artifacts/android/mensa-student-1.0.0-4-armeabi-v7a+arm64-v8a-deedd3e.apk`.
+  The iPhone development build needs `expo run:ios --device` again to pick up `expo-network`; until
+  then it re-checks on the timer, in the foreground and on request only. Details:
   [docs/progress.md](docs/progress.md).
 - **Device testing is partly done** (2026-11-04): the core payment, refund, offline and session flows
   passed on a Pixel XL, an iPad A16 and an iPhone 17 Pro. Not run on devices: TalkBack, VoiceOver,
