@@ -31,8 +31,8 @@ Stage 4 (finance dashboard) is done and deployed: https://zahln-mensa-dashboard-
 and refund flows passed on a Pixel XL, an iPad A16 and an iPhone 17 Pro on 2026-11-04; screen
 readers, maximum font sizes and some recovery cases are still to run (`docs/progress.md`, Phase 0).
 Phase 0 (baseline) and Phase 1 (BUG-01: payment availability re-checked in the foreground, one live
-warning; student build 4) are done; BUG-01's device check N9 on the Pixel XL is the owner's to run.
-Next: the agreed UI polish phases. The design is not frozen.
+warning; student build 4) are done; N9 passed on the Pixel XL. Phase 2 (design system and UI
+primitives) is in progress; screen redesigns, sign-in and localization changes come later.
 
 Live writes go only through intents (the apps, `pnpm api:order-probe`, `pnpm api:payment-probe`) and
 only when the current stage authorizes them; record each one in the ledger in `docs/api-notes.md`.

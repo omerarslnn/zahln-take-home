@@ -489,12 +489,12 @@ The build number used on each device was not recorded.
 | iPhone 17 Pro        | Face ID prompt and cancel                                            | S8          | verified                                                                 |
 | iPhone 17 Pro        | Face ID payment; device-passcode fallback                            | S11, S9     | verified                                                                 |
 | iPhone 17 Pro        | Same result on iPhone and iPad; one payment in the history           | S11, H1     | verified                                                                 |
+| Pixel XL, build 4    | Payment availability recovered in the foreground (BUG-01)            | N9          | verified (later on 2026-11-04; see Phase 1)                              |
 
 **Not run on a device**: S2, S3 (camera permission denied), S5–S7 (foreign QR, wrong code, expiry),
 S12 (maximum font sizes), S13 (German), N2 (send again after an unknown outcome), N3 (a real lost
 response), N4 (a payment that stays pending), N6 (force stop with a genuinely unresolved payment),
-N8 (account switch with an unresolved payment), N9 (BUG-01's device check; build 4 is ready, see
-Phase 1), H2, T2, A1–A4 (TalkBack,
+N8 (account switch with an unresolved payment), H2, T2, A1–A4 (TalkBack,
 VoiceOver), D1–D4 (dashboard manual checks), and S10 on the iPhone.
 
 **Covered only by simulated-server tests**, not by a device: a lost response the server applied
@@ -554,8 +554,10 @@ with `cmd connectivity airplane-mode enable|disable` and screenshots; then N9 on
 
 ## Phase 1: BUG-01, payment availability in the foreground (2026-11-04)
 
-Fixed in `deedd3e`; student build 4 carries it. N9, the acceptance test on the Pixel XL, is still to
-be run by the owner.
+Fixed in `deedd3e`; student build 4 carries it. **N9 passed** on the Pixel XL (Android 10, build 4),
+run and reported by the owner on 2026-11-04: exactly one availability warning while offline; after the
+connection returned, "Pay" became available by itself without leaving the review screen, putting the
+app in the background or refreshing; the stale warning was gone. No payment was made during the check.
 
 ### Causes, confirmed on the unchanged code (`f84e442`)
 
@@ -694,7 +696,7 @@ typecheck, tests and its exported bundles, not on a device.
 | Mutation check of the fix             | passed     | 27/27 killed                                                                                      |
 | Student release APKs, build 4         | built      | Compared with build 3 above                                                                       |
 | Android emulator, build 3 and build 4 | done       | Above                                                                                             |
-| N9 on the Pixel XL                    | not run    | The owner's device check                                                                          |
+| N9 on the Pixel XL                    | passed     | Run by the owner on 2026-11-04 with build 4; no payment made                                      |
 | TalkBack/VoiceOver on the new button  | not run    | Part of A1–A4                                                                                     |
 
 ## Manual steps
@@ -730,10 +732,9 @@ typecheck, tests and its exported bundles, not on a device.
 
 ## Remaining for stage 5: submission
 
-1. N9 on the Pixel XL with student build 4 (BUG-01 is fixed in code; see Phase 1).
-2. The UI polish phases agreed on 2026-11-04 (design system, sign-in, student and till screens),
+1. The UI polish phases agreed on 2026-11-04 (design system, sign-in, student and till screens),
    each with its own checks.
-3. Device checks not run yet: TalkBack, VoiceOver, maximum font sizes, N6 with a genuinely
+2. Device checks not run yet: TalkBack, VoiceOver, maximum font sizes, N6 with a genuinely
    unresolved payment, and the other rows listed under "Not run on a device"; the dashboard's D1–D4.
-4. Final read-through of the README and [design.md](design.md); invite the reviewers; rehearse the
+3. Final read-through of the README and [design.md](design.md); invite the reviewers; rehearse the
    review with [review-guide.md](review-guide.md).
