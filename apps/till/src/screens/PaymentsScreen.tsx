@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 
 import { FlatList, Pressable, RefreshControl, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { paymentStatusText } from '../components/payment-text';
-import { Body, Button, Notice, StatusBadge } from '../components/ui';
+import { Body, Button, Notice, StatusPill } from '../components/ui';
 import type { TillStackParamList } from '../navigation';
 import { useControllerRevision, usePaymentServices } from '../payments/PaymentServices';
 
@@ -78,7 +78,7 @@ export function PaymentsScreen({ navigation }: Props) {
                 {formatCents(payment.amountCents, locale)}
               </Text>
             </View>
-            <StatusBadge tone={status.tone} label={t(status.key)} />
+            <StatusPill tone={status.tone} label={t(status.key)} />
             <Body muted>
               {formatBerlinDateTime(payment.createdAt, locale)} · {payment.id}
             </Body>
@@ -107,14 +107,18 @@ export function PaymentsScreen({ navigation }: Props) {
           </View>
           {search ? <Body muted>{t('till.payments.searching', { q: search })}</Body> : null}
           {state.failure ? (
-            <Notice tone="error" title={t(`history.failure.${state.failure}`)}>
-              <Button
-                label={t('common.retry')}
-                onPress={() =>
-                  void (state.ids.length > 0 ? history?.loadMore() : history?.refresh())
-                }
-              />
-            </Notice>
+            <Notice
+              tone="error"
+              title={t(`history.failure.${state.failure}`)}
+              actions={
+                <Button
+                  label={t('common.retry')}
+                  onPress={() =>
+                    void (state.ids.length > 0 ? history?.loadMore() : history?.refresh())
+                  }
+                />
+              }
+            />
           ) : null}
         </View>
       }

@@ -17,10 +17,10 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Card, LanguageSwitch } from '../components/Foundation';
+import { LanguageSwitch } from '../components/Foundation';
 import { OrderQr } from '../components/OrderQr';
 import { orderStatusText, priceGroupKey } from '../components/payment-text';
-import { Body, Button, Notice, StatusBadge, useAnnouncement } from '../components/ui';
+import { Body, Button, Card, Notice, StatusPill, useAnnouncement } from '../components/ui';
 import type { TillStackParamList } from '../navigation';
 import {
   useControllerRevision,
@@ -135,16 +135,20 @@ export function CheckoutScreen({ navigation }: Props) {
     >
       {header}
       {recordsUnavailable ? (
-        <Notice tone="error" title={t('home.recordsUnavailable.title')}>
-          <Body>{t('home.recordsUnavailable.body')}</Body>
-        </Notice>
+        <Notice
+          tone="error"
+          title={t('home.recordsUnavailable.title')}
+          description={t('home.recordsUnavailable.body')}
+        />
       ) : !controller ? (
         <Notice tone="neutral" title={t('home.loadingRecords')} />
       ) : null}
       {tillFailure ? (
-        <Notice tone="error" title={t(`till.failure.${tillFailure}`)}>
-          <Button label={t('common.retry')} onPress={() => void reload()} />
-        </Notice>
+        <Notice
+          tone="error"
+          title={t(`till.failure.${tillFailure}`)}
+          actions={<Button label={t('common.retry')} onPress={() => void reload()} />}
+        />
       ) : null}
       {message ? <Notice tone="warning" title={t(message)} /> : null}
 
@@ -295,14 +299,18 @@ function CheckoutPanel({ record, qrSize }: { record: CreateOrderIntent; qrSize: 
 
   if (!order || !status) {
     return (
-      <Notice tone="neutral" title={t('checkout.loadingOrder')}>
-        <Button
-          tone="secondary"
-          label={t('result.checkAgain')}
-          busy={busy}
-          onPress={() => void run(() => controller.checkAgain(record.key))}
-        />
-      </Notice>
+      <Notice
+        tone="neutral"
+        title={t('checkout.loadingOrder')}
+        actions={
+          <Button
+            tone="secondary"
+            label={t('result.checkAgain')}
+            busy={busy}
+            onPress={() => void run(() => controller.checkAgain(record.key))}
+          />
+        }
+      />
     );
   }
 
@@ -315,7 +323,7 @@ function CheckoutPanel({ record, qrSize }: { record: CreateOrderIntent; qrSize: 
 
   return (
     <Card>
-      <StatusBadge tone={text.tone} label={t(text.key)} />
+      <StatusPill tone={text.tone} label={t(text.key)} />
       {status === 'open' || status === 'paying' ? (
         <>
           <View className="items-center gap-2">

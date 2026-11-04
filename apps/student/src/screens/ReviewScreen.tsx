@@ -13,12 +13,13 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 import { gateAnnouncement, paymentsOpen } from '../availability';
-import { Card, LabelledValue } from '../components/Foundation';
 import { AvailabilityNotice } from '../components/PaymentAvailability';
 import { priceGroupKey } from '../components/payment-text';
 import {
   Body,
   Button,
+  Card,
+  LabelledValue,
   Notice,
   Screen,
   useAccessibilityFocus,
@@ -144,10 +145,20 @@ export function ReviewScreen({ route, navigation }: Props) {
     return (
       <Screen>
         {failure ? (
-          <Notice tone="error" title={t(`review.failure.${failure}`)}>
-            <Button label={t('common.retry')} onPress={() => void reload()} />
-            <Button tone="secondary" label={t('scan.again')} onPress={() => navigation.goBack()} />
-          </Notice>
+          <Notice
+            tone="error"
+            title={t(`review.failure.${failure}`)}
+            actions={
+              <>
+                <Button label={t('common.retry')} onPress={() => void reload()} />
+                <Button
+                  tone="secondary"
+                  label={t('scan.again')}
+                  onPress={() => navigation.goBack()}
+                />
+              </>
+            }
+          />
         ) : (
           <Notice tone="neutral" title={t('review.loading')} />
         )}
@@ -210,19 +221,25 @@ export function ReviewScreen({ route, navigation }: Props) {
       {order.status === 'open' ? <AvailabilityNotice gate={gate} /> : null}
 
       {unresolved || paidByMe ? (
-        <Notice tone="neutral" title={t(unresolved ? 'review.alreadyStarted' : 'review.paidByYou')}>
-          <Button
-            tone="secondary"
-            label={t('review.showStatus')}
-            onPress={() => existing && navigation.navigate('Result', { key: existing.key })}
-          />
-        </Notice>
+        <Notice
+          tone="neutral"
+          title={t(unresolved ? 'review.alreadyStarted' : 'review.paidByYou')}
+          actions={
+            <Button
+              tone="secondary"
+              label={t('review.showStatus')}
+              onPress={() => existing && navigation.navigate('Result', { key: existing.key })}
+            />
+          }
+        />
       ) : null}
 
       {message ? (
-        <Notice tone={message.tone} title={t(message.key)}>
-          {message.key === 'auth.not_enrolled' ? <Body>{t('auth.enrollHelp')}</Body> : null}
-        </Notice>
+        <Notice
+          tone={message.tone}
+          title={t(message.key)}
+          description={message.key === 'auth.not_enrolled' ? t('auth.enrollHelp') : undefined}
+        />
       ) : null}
     </Screen>
   );

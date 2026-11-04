@@ -5,12 +5,15 @@ import { NavigationContainer } from '@react-navigation/native';
 import { getLocales } from 'expo-localization';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { preloadIcons } from './components/ui';
 import { TillNavigator } from './navigation';
 import { PaymentServicesProvider } from './payments/PaymentServices';
 
 // The user's preferred system language. Intl's default locale is not reliable for this: in Expo Go
 // on the iOS simulator it stayed English with the device set to German.
 const deviceLanguage = getLocales()[0]?.languageTag;
+
+preloadIcons();
 
 /**
  * An order lives 5 minutes and its payment can stay pending for minutes after that, so the till

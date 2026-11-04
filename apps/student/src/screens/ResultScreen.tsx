@@ -12,14 +12,15 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useRef, useState } from 'react';
 import { Text } from 'react-native';
 import { gateAnnouncement, paymentsOpen } from '../availability';
-import { Card, LabelledValue } from '../components/Foundation';
 import { AvailabilityNotice } from '../components/PaymentAvailability';
 import {
   Body,
   Button,
+  Card,
+  LabelledValue,
   Notice,
   Screen,
-  StatusBadge,
+  StatusPill,
   useAccessibilityFocus,
   useAnnouncement,
 } from '../components/ui';
@@ -84,9 +85,13 @@ export function ResultScreen({ route, navigation }: Props) {
   if (!intent || !outcome) {
     return (
       <Screen>
-        <Notice tone="neutral" title={t('result.gone')}>
-          <Button label={t('home.history')} onPress={() => navigation.navigate('History')} />
-        </Notice>
+        <Notice
+          tone="neutral"
+          title={t('result.gone')}
+          actions={
+            <Button label={t('home.history')} onPress={() => navigation.navigate('History')} />
+          }
+        />
       </Screen>
     );
   }
@@ -147,7 +152,7 @@ export function ResultScreen({ route, navigation }: Props) {
       <Text ref={headingRef} accessibilityRole="header" className="text-2xl font-bold text-ink">
         {t(outcome.title)}
       </Text>
-      <StatusBadge tone={outcome.tone} label={t(outcome.title)} />
+      <StatusPill tone={outcome.tone} label={t(outcome.title)} />
       <Body>{t(outcome.body)}</Body>
 
       <Card>
@@ -167,9 +172,11 @@ export function ResultScreen({ route, navigation }: Props) {
       </Card>
 
       {display === 'checking' && intent.refusal ? (
-        <Notice tone="neutral" title={t('result.lastAnswer')}>
-          <Body>{t(refusalText(intent.refusal))}</Body>
-        </Notice>
+        <Notice
+          tone="neutral"
+          title={t('result.lastAnswer')}
+          description={t(refusalText(intent.refusal))}
+        />
       ) : null}
 
       {display === 'pending' || display === 'checking' ? (
@@ -210,9 +217,11 @@ export function ResultScreen({ route, navigation }: Props) {
       ) : null}
 
       {message ? (
-        <Notice tone="warning" title={t(message)}>
-          {message === 'auth.not_enrolled' ? <Body>{t('auth.enrollHelp')}</Body> : null}
-        </Notice>
+        <Notice
+          tone="warning"
+          title={t(message)}
+          description={message === 'auth.not_enrolled' ? t('auth.enrollHelp') : undefined}
+        />
       ) : null}
     </Screen>
   );

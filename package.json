@@ -33,7 +33,8 @@
     "format:check": "prettier --check .",
     "typecheck": "pnpm -r typecheck",
     "test": "tsx --test \"packages/*/src/**/*.test.ts\" \"apps/student/src/**/*.test.ts\" \"apps/dashboard/src/**/*.test.ts\"",
-    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm check:instances && pnpm dashboard:build",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm check:instances && pnpm check:copies && pnpm dashboard:build",
+    "check:copies": "node scripts/check-native-copies.mjs",
     "check:instances": "node scripts/check-single-instances.mjs"
   },
   "devDependencies": {

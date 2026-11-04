@@ -5,8 +5,15 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Linking, Text, TextInput, View } from 'react-native';
-import { Card } from '../components/Foundation';
-import { Body, Button, Notice, Screen, useAnnouncement, useAppActive } from '../components/ui';
+import {
+  Body,
+  Button,
+  Card,
+  Notice,
+  Screen,
+  useAnnouncement,
+  useAppActive,
+} from '../components/ui';
 import type { RootStackParamList } from '../navigation';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Scan'>;
@@ -78,15 +85,21 @@ export function ScanScreen({ navigation }: Props) {
       {permission === null ? (
         <Notice tone="neutral" title={t('scan.permissionChecking')} />
       ) : !permission.granted && permission.canAskAgain ? (
-        <Notice tone="neutral" title={t('scan.permissionTitle')}>
-          <Body>{t('scan.permissionBody')}</Body>
-          <Button label={t('scan.allow')} onPress={() => void requestPermission()} />
-        </Notice>
+        <Notice
+          tone="neutral"
+          title={t('scan.permissionTitle')}
+          description={t('scan.permissionBody')}
+          actions={<Button label={t('scan.allow')} onPress={() => void requestPermission()} />}
+        />
       ) : !permission.granted ? (
-        <Notice tone="warning" title={t('scan.deniedTitle')}>
-          <Body>{t('scan.deniedBody')}</Body>
-          <Button label={t('scan.openSettings')} onPress={() => void Linking.openSettings()} />
-        </Notice>
+        <Notice
+          tone="warning"
+          title={t('scan.deniedTitle')}
+          description={t('scan.deniedBody')}
+          actions={
+            <Button label={t('scan.openSettings')} onPress={() => void Linking.openSettings()} />
+          }
+        />
       ) : null}
 
       {cameraOn ? (
@@ -107,9 +120,11 @@ export function ScanScreen({ navigation }: Props) {
       {permission?.granted ? <Body muted>{t('scan.instructions')}</Body> : null}
 
       {problem ? (
-        <Notice tone="error" title={t(`scan.problem.${problem}`)}>
-          <Button label={t('scan.again')} onPress={scanAgain} />
-        </Notice>
+        <Notice
+          tone="error"
+          title={t(`scan.problem.${problem}`)}
+          actions={<Button label={t('scan.again')} onPress={scanAgain} />}
+        />
       ) : null}
 
       <Card title={t('scan.typeTitle')}>

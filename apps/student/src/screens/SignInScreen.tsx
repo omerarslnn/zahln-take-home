@@ -40,9 +40,11 @@ export function SignInScreen({ navigation }: Props) {
       </View>
 
       {missingEnvNames.length > 0 ? (
-        <Notice tone="error" title={t('signIn.notConfigured')}>
-          <Body>{missingEnvNames.join(', ')}</Body>
-        </Notice>
+        <Notice
+          tone="error"
+          title={t('signIn.notConfigured')}
+          description={missingEnvNames.join(', ')}
+        />
       ) : null}
 
       <View className="gap-3">
@@ -64,9 +66,11 @@ export function SignInScreen({ navigation }: Props) {
       </View>
 
       {failure ? (
-        <Notice tone="error" title={t('signIn.failed')}>
-          <Body>{t(`signIn.failure.${failure}`)}</Body>
-        </Notice>
+        <Notice
+          tone="error"
+          title={t('signIn.failed')}
+          description={t(`signIn.failure.${failure}`)}
+        />
       ) : null}
 
       <LanguageSwitch />

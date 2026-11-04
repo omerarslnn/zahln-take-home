@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
 import { FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { paymentStatusText } from '../components/payment-text';
-import { Body, Button, Notice, StatusBadge } from '../components/ui';
+import { Body, Button, Notice, StatusPill } from '../components/ui';
 import type { RootStackParamList } from '../navigation';
 import { describeOutcome } from '../payment-outcome';
 import { useControllerRevision, usePaymentServices } from '../payments/PaymentServices';
@@ -55,7 +55,7 @@ export function HistoryScreen({ navigation }: Props) {
           onPress={() => navigation.navigate('Result', { key: item.intent.key })}
           className="min-h-touch gap-1 rounded-card bg-surface p-4 active:opacity-80"
         >
-          <StatusBadge tone={outcome.tone} label={t(outcome.title)} />
+          <StatusPill tone={outcome.tone} label={t(outcome.title)} />
           <Text className="text-base text-ink">
             {formatCents(item.intent.payload.amountCents, locale)}
           </Text>
@@ -78,7 +78,7 @@ export function HistoryScreen({ navigation }: Props) {
             {formatCents(payment.amountCents, locale)}
           </Text>
         </View>
-        <StatusBadge tone={status.tone} label={t(status.key)} />
+        <StatusPill tone={status.tone} label={t(status.key)} />
         <Body muted>{formatBerlinDateTime(payment.createdAt, locale)}</Body>
       </Pressable>
     );
@@ -105,14 +105,18 @@ export function HistoryScreen({ navigation }: Props) {
           </Text>
           <Body muted>{t('history.timeZone')}</Body>
           {state.failure ? (
-            <Notice tone="error" title={t(`history.failure.${state.failure}`)}>
-              <Button
-                label={t('common.retry')}
-                onPress={() =>
-                  void (state.ids.length > 0 ? history?.loadMore() : history?.refresh())
-                }
-              />
-            </Notice>
+            <Notice
+              tone="error"
+              title={t(`history.failure.${state.failure}`)}
+              actions={
+                <Button
+                  label={t('common.retry')}
+                  onPress={() =>
+                    void (state.ids.length > 0 ? history?.loadMore() : history?.refresh())
+                  }
+                />
+              }
+            />
           ) : null}
         </View>
       }

@@ -2,21 +2,7 @@
 // React Native components needs a native-only package (see docs/review-guide.md).
 import { LOCALES } from '@mensa/shared';
 import { useI18n } from '@mensa/shared/react';
-import type { ReactNode } from 'react';
 import { Pressable, Text, View } from 'react-native';
-
-export function Card({ title, children }: { title?: string; children: ReactNode }) {
-  return (
-    <View className="gap-2 rounded-card bg-surface p-4">
-      {title ? (
-        <Text accessibilityRole="header" className="text-lg font-semibold text-ink">
-          {title}
-        </Text>
-      ) : null}
-      {children}
-    </View>
-  );
-}
 
 /** DE/EN switch announced as a radio group; each label is written in its own language. */
 export function LanguageSwitch() {
@@ -45,16 +31,6 @@ export function LanguageSwitch() {
           </Pressable>
         );
       })}
-    </View>
-  );
-}
-
-/** Read as one phrase by screen readers ("label: value") instead of two separate stops. */
-export function LabelledValue({ label, value }: { label: string; value: string }) {
-  return (
-    <View accessible accessibilityLabel={`${label}: ${value}`}>
-      <Text className="text-ink-muted">{label}</Text>
-      <Text className="text-base font-semibold text-ink">{value}</Text>
     </View>
   );
 }

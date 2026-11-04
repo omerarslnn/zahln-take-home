@@ -3,10 +3,10 @@ import { formatCents } from '@mensa/shared';
 import { useI18n } from '@mensa/shared/react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Pressable, Text, View } from 'react-native';
-import { Card, LanguageSwitch } from '../components/Foundation';
+import { LanguageSwitch } from '../components/Foundation';
 import { PaymentAvailability } from '../components/PaymentAvailability';
 import { priceGroupKey } from '../components/payment-text';
-import { Body, Button, Notice, Screen, StatusBadge } from '../components/ui';
+import { Body, Button, Card, Notice, Screen, StatusPill } from '../components/ui';
 import type { RootStackParamList } from '../navigation';
 import { describeOutcome } from '../payment-outcome';
 import { useControllerRevision, usePaymentServices } from '../payments/PaymentServices';
@@ -36,9 +36,11 @@ export function HomeScreen({ navigation }: Props) {
       </View>
 
       {recordsUnavailable ? (
-        <Notice tone="error" title={t('home.recordsUnavailable.title')}>
-          <Body>{t('home.recordsUnavailable.body')}</Body>
-        </Notice>
+        <Notice
+          tone="error"
+          title={t('home.recordsUnavailable.title')}
+          description={t('home.recordsUnavailable.body')}
+        />
       ) : !controller ? (
         <Notice tone="neutral" title={t('home.loadingRecords')} />
       ) : null}
@@ -66,7 +68,7 @@ export function HomeScreen({ navigation }: Props) {
                 onPress={() => navigation.navigate('Result', { key: record.key })}
                 className="min-h-touch gap-1 border-t border-line py-2 active:opacity-80"
               >
-                <StatusBadge tone={outcome.tone} label={t(outcome.title)} />
+                <StatusPill tone={outcome.tone} label={t(outcome.title)} />
                 <Text className="text-base text-ink">{amount}</Text>
               </Pressable>
             );

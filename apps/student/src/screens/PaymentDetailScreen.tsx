@@ -15,9 +15,13 @@ export function PaymentDetailScreen({ route }: Props) {
   return (
     <Screen>
       {failure ? (
-        <Notice tone="error" title={t(`detail.failure.${failure}`)}>
-          <Button label={t('common.retry')} busy={loading} onPress={() => void reload()} />
-        </Notice>
+        <Notice
+          tone="error"
+          title={t(`detail.failure.${failure}`)}
+          actions={
+            <Button label={t('common.retry')} busy={loading} onPress={() => void reload()} />
+          }
+        />
       ) : null}
       {view ? (
         <>

@@ -5,17 +5,18 @@ import { useI18n } from '@mensa/shared/react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useState } from 'react';
 import { Text, TextInput, View } from 'react-native';
-import { Card, LabelledValue } from '../components/Foundation';
 import { PaymentDetails } from '../components/PaymentDetails';
 import { refundStatusText } from '../components/payment-text';
 import {
   Body,
   Button,
+  Card,
+  LabelledValue,
   Notice,
   Screen,
-  StatusBadge,
-  useAnnouncement,
+  StatusPill,
   type Tone,
+  useAnnouncement,
 } from '../components/ui';
 import type { TillStackParamList } from '../navigation';
 import {
@@ -40,9 +41,13 @@ export function PaymentDetailScreen({ route }: Props) {
   return (
     <Screen>
       {failure ? (
-        <Notice tone="error" title={t(`detail.failure.${failure}`)}>
-          <Button label={t('common.retry')} busy={loading} onPress={() => void reload()} />
-        </Notice>
+        <Notice
+          tone="error"
+          title={t(`detail.failure.${failure}`)}
+          actions={
+            <Button label={t('common.retry')} busy={loading} onPress={() => void reload()} />
+          }
+        />
       ) : null}
       {view ? (
         <>
@@ -163,21 +168,24 @@ function RefundPanel({ payment, onChanged }: { payment: Payment; onChanged: () =
         <Notice
           tone="warning"
           title={t('refund.confirmTitle', { amount: formatCents(confirming, locale) })}
-        >
-          <Body>{t('refund.confirmBody')}</Body>
-          <Button
-            tone="danger"
-            label={t('refund.confirm', { amount: formatCents(confirming, locale) })}
-            busy={busy}
-            onPress={() => void submit(confirming)}
-          />
-          <Button
-            tone="secondary"
-            label={t('refund.cancel')}
-            disabled={busy}
-            onPress={() => setConfirming(null)}
-          />
-        </Notice>
+          description={t('refund.confirmBody')}
+          actions={
+            <>
+              <Button
+                tone="danger"
+                label={t('refund.confirm', { amount: formatCents(confirming, locale) })}
+                busy={busy}
+                onPress={() => void submit(confirming)}
+              />
+              <Button
+                tone="secondary"
+                label={t('refund.cancel')}
+                disabled={busy}
+                onPress={() => setConfirming(null)}
+              />
+            </>
+          }
+        />
       ) : (
         <View className="gap-3">
           <Button
@@ -251,7 +259,7 @@ function RefundRow({ record }: { record: RefundIntent }) {
 
   return (
     <View className="gap-2 border-t border-line pt-3">
-      <StatusBadge tone={status.tone} label={t(status.key)} />
+      <StatusPill tone={status.tone} label={t(status.key)} />
       <Text className="text-base text-ink">{formatCents(record.payload.amountCents, locale)}</Text>
       {record.state === 'unknown' ? (
         <>

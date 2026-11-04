@@ -4,7 +4,7 @@ import { useI18n, type I18nValue } from '@mensa/shared/react';
 import { useState } from 'react';
 import { AccessibilityInfo, Platform, Pressable, Text, View } from 'react-native';
 import { checkSecureStorage, type StorageCheck } from '../payments/secure-intent-store';
-import { Card } from './Foundation';
+import { Card } from './ui';
 
 type CheckState =
   { phase: 'idle' } | { phase: 'running' } | { phase: 'done'; result: StorageCheck };

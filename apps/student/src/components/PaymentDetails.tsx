@@ -5,14 +5,13 @@ import type { Payment, PaymentDetail } from '@mensa/api';
 import { formatBerlinDateTime, formatCents } from '@mensa/shared';
 import { useI18n } from '@mensa/shared/react';
 import { Text, View } from 'react-native';
-import { Card, LabelledValue } from './Foundation';
 import {
   historyEventKey,
   paymentStatusText,
   priceGroupKey,
   refundStatusText,
 } from './payment-text';
-import { StatusBadge, useAnnouncement } from './ui';
+import { Card, LabelledValue, StatusPill, useAnnouncement } from './ui';
 
 export function PaymentDetails({
   payment,
@@ -30,7 +29,7 @@ export function PaymentDetails({
   return (
     <>
       <Card>
-        <StatusBadge tone={status.tone} label={t(status.key)} />
+        <StatusPill tone={status.tone} label={t(status.key)} />
         <LabelledValue
           label={t('payment.amount')}
           value={formatCents(payment.amountCents, locale)}
@@ -84,7 +83,7 @@ export function PaymentDetails({
           const text = refundStatusText(refund.status);
           return (
             <View key={refund.id} className="gap-1 border-t border-line pt-2">
-              <StatusBadge tone={text.tone} label={t(text.key)} />
+              <StatusPill tone={text.tone} label={t(text.key)} />
               <Text className="text-base text-ink">
                 {formatCents(refund.amountCents, locale)} ·{' '}
                 {formatBerlinDateTime(refund.createdAt, locale)}
