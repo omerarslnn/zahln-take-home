@@ -14,7 +14,8 @@ dashboard) in one TypeScript monorepo, built against the supplied mock API.
 > 2026-11-04. **Not yet verified**: TalkBack and VoiceOver, maximum font sizes, a force-stop with a
 > genuinely unresolved payment, a real lost response on a device, and some dashboard manual checks.
 > **BUG-01 fixed** in Phase 1 (student build 4) and verified on the Pixel XL (N9, 2026-11-04). Design:
-> [docs/design.md](docs/design.md). Records: [docs/progress.md](docs/progress.md).
+> [docs/design.md](docs/design.md); visual design system: [docs/design-system.md](docs/design-system.md).
+> Records: [docs/progress.md](docs/progress.md).
 
 ## What exists today
 
@@ -104,13 +105,13 @@ clean iOS prebuild), do not commit that line.
 ## Checks
 
 ```sh
-pnpm check            # Prettier, ESLint (type-aware), typecheck (6 workspaces), tests, single-instance check, dashboard build
+pnpm check            # Prettier, ESLint (type-aware), typecheck (6 workspaces), tests, single-instance check, native copy check, dashboard build
 pnpm bundle:native    # Metro + Hermes bundles for iOS and Android, both apps (no native compile)
 pnpm api:spec-diff    # opt-in, network: live OpenAPI vs committed copy (read-only)
 ZAHLN_SMOKE_PASSWORD=<seeded password> pnpm api:smoke         # opt-in, network: see below
 ZAHLN_SMOKE_PASSWORD=<seeded password> pnpm api:order-probe   # opt-in, network, WRITES one cashier order
 ZAHLN_SMOKE_PASSWORD=<seeded password> pnpm api:payment-probe # opt-in, network, WRITES one order + one payment
-pnpm dashboard:browser-check [-- --url <URL>] [--idle]          # opt-in, network, read-only: dashboard in headless Chrome
+pnpm dashboard:browser-check [-- --url <URL>] [--idle]          # opt-in, network, read-only: dashboard in headless Chrome (local: run pnpm dashboard:preview first)
 ```
 
 `pnpm api:smoke` sends only `GET /config`, `POST /sessions` (one seeded account), `GET /mensas` (with
@@ -231,24 +232,25 @@ scripts/          env-init, standalone APK build, single-instance check, dashboa
 docs/             design, architecture, API notes, progress record, manual tests, review guide
 ```
 
-More: [docs/design.md](docs/design.md) · [docs/architecture.md](docs/architecture.md) · [docs/api-notes.md](docs/api-notes.md) ·
+More: [docs/design.md](docs/design.md) · [docs/design-system.md](docs/design-system.md) · [docs/architecture.md](docs/architecture.md) · [docs/api-notes.md](docs/api-notes.md) ·
 [docs/review-guide.md](docs/review-guide.md)
 
 ## Technology choices
 
-| Choice                                                  | Why                                                                                                                                                                 |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Expo SDK 54, React Native 0.81.5, React 19.1.0          | Newest stable SDK this Mac's Xcode 26.1.1 can build for iOS; still patched (54.0.38). Upgrading to SDK 58 needs Xcode 26.4+ (Node 24 is already in place).          |
-| pnpm 10 workspaces, isolated layout                     | Stops packages from using undeclared dependencies. Expo supports isolated installs from SDK 54. No Turborepo/Nx: not needed at this size.                           |
-| NativeWind 4.2.7 + Tailwind 3.4.19 everywhere           | NativeWind's stable line requires Tailwind 3; using Tailwind 3 on the web too lets one preset carry the design tokens to all three apps.                            |
-| Vite 8 + React 19.1.0 for the dashboard                 | React pinned to the Expo version, so one React instance exists in the workspace.                                                                                    |
-| openapi-typescript 7                                    | Types generated from the contract; the transport (~200 lines) and the runtime decoders are hand-written to keep retry and validation semantics explicit.            |
-| TypeScript 5.9, ESLint 9 (flat, type-aware), Prettier 3 | TypeScript 7 is not supported by typescript-eslint yet. ESLint 9 is deprecated upstream; ESLint 10 runs on the pinned Node 24 but is deferred to its own change.    |
-| `node:test` via tsx                                     | Platform-neutral logic is tested without a Jest/Babel setup.                                                                                                        |
-| expo-camera 17, expo-local-authentication 17            | SDK 54's own camera (with barcode scanning) and biometric/device-PIN prompt; both work in Expo Go on Android, and permissions are set in `app.json`.                |
-| expo-network 8 (student only)                           | SDK 54's own network-state listener, a hint to re-check payment availability when the connection returns; its unused `ACCESS_WIFI_STATE` is blocked.                |
-| Hash routes, no router or UI library in the dashboard   | Five screens; deep links survive any static host; small domain stores read through `useSyncExternalStore`.                                                          |
-| qrcode 1.5.4                                            | Mature QR encoder; the till draws its matrix with plain Views. react-native-qrcode-svg had eight releases in four days, and react-native-svg duplicated NativeWind. |
+| Choice                                                  | Why                                                                                                                                                                      |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Expo SDK 54, React Native 0.81.5, React 19.1.0          | Newest stable SDK this Mac's Xcode 26.1.1 can build for iOS; still patched (54.0.38). Upgrading to SDK 58 needs Xcode 26.4+ (Node 24 is already in place).               |
+| pnpm 10 workspaces, isolated layout                     | Stops packages from using undeclared dependencies. Expo supports isolated installs from SDK 54. No Turborepo/Nx: not needed at this size.                                |
+| NativeWind 4.2.7 + Tailwind 3.4.19 everywhere           | NativeWind's stable line requires Tailwind 3; using Tailwind 3 on the web too lets one preset carry the design tokens to all three apps.                                 |
+| Vite 8 + React 19.1.0 for the dashboard                 | React pinned to the Expo version, so one React instance exists in the workspace.                                                                                         |
+| openapi-typescript 7                                    | Types generated from the contract; the transport (~200 lines) and the runtime decoders are hand-written to keep retry and validation semantics explicit.                 |
+| TypeScript 5.9, ESLint 9 (flat, type-aware), Prettier 3 | TypeScript 7 is not supported by typescript-eslint yet. ESLint 9 is deprecated upstream; ESLint 10 runs on the pinned Node 24 but is deferred to its own change.         |
+| `node:test` via tsx                                     | Platform-neutral logic is tested without a Jest/Babel setup.                                                                                                             |
+| expo-camera 17, expo-local-authentication 17            | SDK 54's own camera (with barcode scanning) and biometric/device-PIN prompt; both work in Expo Go on Android, and permissions are set in `app.json`.                     |
+| expo-network 8 (student only)                           | SDK 54's own network-state listener, a hint to re-check payment availability when the connection returns; its unused `ACCESS_WIFI_STATE` is blocked.                     |
+| @expo/vector-icons 15 (Ionicons)                        | One icon family for both platforms, already part of Expo SDK 54 (no native code; the font loads through `expo-font`). Every icon is decorative and has words next to it. |
+| Hash routes, no router or UI library in the dashboard   | Five screens; deep links survive any static host; small domain stores read through `useSyncExternalStore`.                                                               |
+| qrcode 1.5.4                                            | Mature QR encoder; the till draws its matrix with plain Views. react-native-qrcode-svg had eight releases in four days, and react-native-svg duplicated NativeWind.      |
 
 ## Known blockers and limitations
 

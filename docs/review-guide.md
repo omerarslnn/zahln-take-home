@@ -244,9 +244,11 @@ Replace `packages/api/openapi/openapi.json` deliberately (keep `brief/` untouche
 
 **Share a React Native component between student and till**
 
-Today the two apps keep small identical copies (`Foundation.tsx`, `ConnectionCheck.tsx`,
-`SecureStorageCheck.tsx`, and everything in `src/payments/` except the student-only
-`connectivity.ts`). To share them, create
+Today the two apps keep identical copies of the design-system primitives (`src/components/ui/`),
+`Foundation.tsx`, `ConnectionCheck.tsx`, `SecureStorageCheck.tsx` and everything in `src/payments/`
+except the student-only `connectivity.ts`; `pnpm check:copies` proves they match (the list is in
+`scripts/check-native-copies.mjs`). Why copies and not a package: [design-system.md](design-system.md).
+To share them anyway, create
 `packages/native-ui` with `react-native`, `react`, `nativewind` and `react-native-css-interop` as
 peer + dev dependencies at exactly the apps' versions, move the files, add
 `../../packages/native-ui/src/**/*.{ts,tsx}` to both apps' Tailwind `content`, and confirm

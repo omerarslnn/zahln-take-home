@@ -31,8 +31,9 @@ Stage 4 (finance dashboard) is done and deployed: https://zahln-mensa-dashboard-
 and refund flows passed on a Pixel XL, an iPad A16 and an iPhone 17 Pro on 2026-11-04; screen
 readers, maximum font sizes and some recovery cases are still to run (`docs/progress.md`, Phase 0).
 Phase 0 (baseline) and Phase 1 (BUG-01: payment availability re-checked in the foreground, one live
-warning; student build 4) are done; N9 passed on the Pixel XL. Phase 2 (design system and UI
-primitives) is in progress; screen redesigns, sign-in and localization changes come later.
+warning; student build 4) are done; N9 passed on the Pixel XL. Phase 2 (design system: tokens,
+native primitives, `docs/design-system.md`) is done and awaits the owner's review before Phase 3;
+screen redesigns, sign-in and localization changes come later.
 
 Live writes go only through intents (the apps, `pnpm api:order-probe`, `pnpm api:payment-probe`) and
 only when the current stage authorizes them; record each one in the ledger in `docs/api-notes.md`.
@@ -44,7 +45,8 @@ user action.
 ```sh
 pnpm install            # pnpm 10.34.9 via Corepack (packageManager field); fetches pinned Node 24.22.2
 pnpm toolchain          # prints the Node.js/pnpm that actually run project scripts
-pnpm check              # format:check + lint + typecheck + test + single instances + dashboard build
+pnpm check              # format:check + lint + typecheck + test + single instances + copies + dashboard build
+pnpm check:copies       # the student and till copies of shared native code are identical
 pnpm student | pnpm till | pnpm dashboard     # Metro 8081 | Metro 8082 (till dev build; s = Expo Go) | Vite 5173
 pnpm bundle:native      # expo export for iOS and Android (both apps)
 pnpm api:generate       # regenerate packages/api/src/generated from the contract copy
@@ -133,10 +135,17 @@ dashboard; 12 is implemented as a device gate.
 - Android builds need JDK 17. `~/.gradle/gradle.properties` on this Mac pins JDK 11 globally; leave it,
   and build through `pnpm apk:*`, which passes `-Dorg.gradle.java.home` for JDK 17.
 - Styling: NativeWind 4 + Tailwind 3 with the shared preset `@mensa/shared/tailwind-preset`
-  (tokens in `packages/shared/src/tokens/tokens.json`). Minimum touch target 48. NativeWind ignores
-  `className` on `KeyboardAvoidingView` (give it a style, as `Screen` does). Exactly one copy of react,
-  react-native, react-native-css-interop and nativewind may exist: an optional peer that differs
-  between apps (react-native-svg did) duplicates css-interop, and `pnpm check:instances` fails.
+  (tokens in `packages/shared/src/tokens/tokens.json`; rules in `docs/design-system.md`). Both apps
+  set NativeWind's `inlineRem: 16` (its native default, 14, broke the 4-point grid). Use token
+  classes and the type steps (`text-title`, `text-headline`, `text-body`, `text-caption`,
+  `text-display`), never hex values; a new colour pairing needs a contrast test. Minimum touch target 48. NativeWind ignores `className` on `KeyboardAvoidingView` (give it a style, as `Screen` does).
+  Exactly one copy of react, react-native, react-native-css-interop and nativewind may exist: an
+  optional peer that differs between apps (react-native-svg did) duplicates css-interop, and
+  `pnpm check:instances` fails.
+- Native primitives live in `apps/*/src/components/ui/` (Button, Notice, ListRow, TextField…).
+  Nothing interactive goes inside an `accessible` group (VoiceOver cannot reach it): `Notice` takes
+  strings and `actions`, never children. Icons are Ionicons through `Icon`, always decorative. The
+  design catalogue (Diagnostics → Design system) exists only under `__DEV__`.
 - Screen-reader announcements go through `useAnnouncement` only (both platforms, focused screen
   only, once per change); never also an Android live region for the same message.
 - The dashboard keeps nothing in localStorage or cookies, and uses hash routes (`#/…`).
@@ -149,8 +158,9 @@ dashboard; 12 is implemented as a device gate.
   doubles live in `packages/*/src/testing/` and are never exported from a package index (Metro does
   not tree-shake; they would ship in the app bundles).
 - The student and till apps keep identical copies (apart from the header comment naming the other
-  copy) of `src/api.ts`, `src/payments/*` (except the student-only `connectivity.ts`) and
-  `src/components/` `ui.tsx`, `payment-text.ts`, `PaymentDetails.tsx`, `SecureStorageCheck.tsx`,
-  `ConnectionCheck.tsx`; change both.
+  copy) of the files listed in `scripts/check-native-copies.mjs`: `src/components/ui/`, `src/api.ts`,
+  `src/payments/*` (except the student-only `connectivity.ts`), a few components, the catalogue and
+  the Metro/Tailwind/Babel configs. Change both; `pnpm check:copies` fails on any drift. Their tests
+  live with the student copy.
 - Keep `docs/progress.md`, `docs/api-notes.md` and `docs/manual-tests.md` in step with actual
   results; mark checks as passed, failed, blocked or not run.

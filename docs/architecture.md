@@ -375,7 +375,7 @@ folder while app code used the other, and class names on remapped components sil
 the student app. The till therefore draws its QR without SVG, and `pnpm check` runs
 `scripts/check-single-instances.mjs`, which fails if react, react-native, react-native-css-interop or
 nativewind exists twice. Separately, NativeWind did not apply classes to `KeyboardAvoidingView` even
-with one copy, so the screen wrapper (`components/ui.tsx`) gives it a plain style.
+with one copy, so the screen wrapper (`components/ui/Screen.tsx`) gives it a plain style.
 
 ## The finance dashboard (stage 4)
 
@@ -419,17 +419,11 @@ variable is missing instead of crashing.
 
 `packages/shared/src/tokens/tokens.json` is the single source. TypeScript reads it through
 `src/tokens/index.ts`; the Tailwind preset (`tailwind-preset.cjs`) maps it to classes such as
-`bg-brand`, `text-ink-muted`, `rounded-card` and `min-h-touch`, used by all three apps.
-
-| Pair                                              | Contrast | Requirement             |
-| ------------------------------------------------- | -------: | ----------------------- |
-| ink `#111827` on surface `#FFFFFF`                |  17.74:1 | AA text 4.5:1           |
-| ink-muted `#4B5563` on canvas `#F3F4F6`           |   6.87:1 | AA text                 |
-| white on brand `#1D4ED8`                          |   6.70:1 | AA text                 |
-| success `#15803D` on white                        |   5.02:1 | AA text                 |
-| warning `#B45309` on white (and white on warning) |   5.02:1 | AA text                 |
-| danger `#B91C1C` on white                         |   6.47:1 | AA text                 |
-| line `#6B7280` on white                           |   4.83:1 | 3:1 for control borders |
+`bg-brand`, `text-ink-muted`, `rounded-card` and `min-h-touch`, used by all three apps. The tokens,
+the native primitives built on them and their accessibility rules are described in
+[design-system.md](design-system.md); colour contrast is checked by tests
+(`packages/shared/src/tokens/contrast.test.ts`, and the primitives' style tables in
+`apps/student/src/components/ui/styles.test.ts`), not by a table kept by hand.
 
 Minimum touch target: 48 dp/px (`min-h-touch`), measured as 126 px = 48 dp on the 420 dpi emulator.
 The language switch is a radio group (Android reports `RadioButton` with the checked state). Results

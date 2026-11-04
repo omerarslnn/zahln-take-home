@@ -699,6 +699,79 @@ typecheck, tests and its exported bundles, not on a device.
 | N9 on the Pixel XL                    | passed     | Run by the owner on 2026-11-04 with build 4; no payment made                                      |
 | TalkBack/VoiceOver on the new button  | not run    | Part of A1–A4                                                                                     |
 
+## Phase 2: design system and UI foundations (2026-11-04)
+
+The foundation for the screen redesigns: tokens, native primitives, their accessibility rules and
+a check that keeps the two apps' copies identical. Described in [design-system.md](design-system.md).
+No business logic changed: payments, refunds, QR, history, sessions and the availability recovery
+are untouched; screens changed only where a primitive's API changed.
+
+### Audit findings that shaped it
+
+- **No 4-point grid on the phones.** NativeWind's native `rem` defaults to 14, so `p-4` was 14 dp,
+  `px-3` 10.5 dp and body text (`text-base`) 14 dp, smaller than either platform's default. Both
+  apps now set `inlineRem: 16`: every rem-based size grows by 16/14, the same scale as the web.
+- **Buttons VoiceOver could not reach.** 13 notices put buttons inside their `accessible` group,
+  which VoiceOver treats as one element (the order-load retry and "Show status" on the review
+  screen, the camera-permission and scan actions, the till's refund confirmation and retries).
+- **Glyphs read aloud.** Status glyphs (✓ ! ✕ •) were text, so screen readers could read "bullet" or
+  "exclamation mark" before a notice's title.
+- **Faded disabled buttons** (50 % opacity of their tone) and dark `line` dividers used as
+  decoration; the dashboard uses only the existing token names.
+
+### What changed
+
+- **Tokens** (`tokens.json`, the Tailwind preset): tonal `*-strong` / `*-subtle` / `*-line` colours
+  for brand, success, warning and danger, `fill`, `line-subtle`, a five-step type scale, icon sizes,
+  spacing and motion values. Existing names and values unchanged.
+- **Primitives** (`apps/*/src/components/ui/`, replacing `ui.tsx` and the generic parts of
+  `Foundation.tsx`): Button (primary, secondary, tertiary, danger; grey when disabled; width-keeping
+  busy state; optional icon), IconButton, Title / Heading / Body / Caption, Card, Section,
+  LabelledValue, ListRow, StatusPill (renamed from StatusBadge, now tonal with an icon), Notice
+  (strings plus `actions` outside its group, no children), AmountText, TextField, EmptyState,
+  LoadingIndicator, Skeleton (Reanimated, still under reduced motion), BottomActionBar (safe area
+  and keyboard aware) and Screen.
+- **Icons**: `@expo/vector-icons` 15.1.1 (Ionicons) as a direct dependency of both apps: the
+  version `expo` already brought, no native code; the font is preloaded at start.
+- **Call sites**: the 23 notices with children use `description` / `actions`; StatusBadge → StatusPill;
+  Card and LabelledValue imported from `ui`; the home and diagnostics availability card shows the
+  tone's icon instead of a coloured dot, and "Check availability again" sits inside its notice.
+- **`pnpm check:copies`** (in `pnpm check`): the listed shared files must exist in both apps and be
+  identical apart from the header comment. Shown to fail on a one-line drift and on a file added to
+  one copy, and to accept a different header.
+- **Design catalogue** (Diagnostics → Design system), development builds only.
+
+**Visible on existing screens**: larger text and spacing (the rem fix), hairline card outlines,
+tonal status pills and banners with icons, grey disabled buttons, 1 dp secondary-button borders
+instead of 2 dp, actions inside banners laid out below their text. Layouts otherwise unchanged.
+
+### Checks (2026-11-04, fresh runs)
+
+| Check                                          | Result            | Notes                                                                                                                                                                                |
+| ---------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pnpm check`                                   | passed            | 226 tests in 54 suites (+49: 30 token contrast pairs, 19 primitive style and label tests), Prettier, ESLint, typecheck, single instances, 31 identical native files, dashboard build |
+| `pnpm bundle:native`                           | passed            | Both apps, iOS and Android; the catalogue's strings are in none of the four release bundles; the Ionicons font is the only new asset                                                 |
+| `expo install --check`                         | passed            | Both apps: dependencies match SDK 54                                                                                                                                                 |
+| Dashboard CSS                                  | unchanged         | Same file and SHA-256 (`707c6598…`); the JS grew 0.6 kB (token data)                                                                                                                 |
+| `pnpm dashboard:browser-check`                 | passed (36/36)    | Local build (`pnpm dashboard:preview`) and the deployed site; read-only. A first local run failed because no preview server was running                                              |
+| Release APK impact (arm64 comparison builds)   | measured          | Student 35,906,038 → 36,182,158 bytes (+276 kB), till 28,167,488 → 28,448,248 (+281 kB); permissions unchanged (7 and 3). Comparison builds only, not deliverables                   |
+| Android emulator, before / after               | done              | Medium Phone AVD, Android 16: sign-in, home, diagnostics, scan, review (an expired order), history, payment detail; till sign-in, checkout, payments, payment detail. Reads only     |
+| Larger text                                    | done              | 130 % (the Pixel XL's largest) on home, scan, review and history; 200 % on the catalogue: text wraps, nothing clipped                                                                |
+| Tablet layout                                  | done              | Till on the emulator at 800 × 1280 dp (≈ iPad portrait): checkout and payments                                                                                                       |
+| iPad simulator (iPad Pro 11-inch M5, iOS 26.5) | partly            | Till in Expo Go: the sign-in screen rendered (SF Pro, new buttons) behind Expo Go's first-run developer-menu sheet; taps could not be automated, so nothing further                  |
+| Busy button                                    | checked           | Same bounds before and while busy; Android reports it as disabled and "busy"                                                                                                         |
+| Notice grouping in the accessibility tree      | checked (Android) | Scan screen: "Allow camera" inside the notice's focusable group in build 4, a separate element now                                                                                   |
+| VoiceOver, TalkBack on devices                 | not run           | A1–A4; the VoiceOver fix is structural and needs the physical pass                                                                                                                   |
+| Payment and refund flows on a device           | not run           | No payments or refunds were made; their logic is unchanged and covered by the simulated-server tests                                                                                 |
+
+### Remaining
+
+- Screens still carry raw classes (`text-2xl` titles, `border-line` dividers) until their redesign.
+- History rows (student) and payment rows (till) nest an accessible status pill in a button. On
+  Android the student's history row was observed to omit the status from its label; the till's rows
+  have the same structure. `ListRow` is the replacement.
+- Physical screen-reader passes (A1–A4) and the maximum-font check on devices (S12).
+
 ## Manual steps
 
 1. **pnpm on PATH**: `corepack enable pnpm` (undo: `corepack disable pnpm`), or prefix commands with
@@ -732,8 +805,8 @@ typecheck, tests and its exported bundles, not on a device.
 
 ## Remaining for stage 5: submission
 
-1. The UI polish phases agreed on 2026-11-04 (design system, sign-in, student and till screens),
-   each with its own checks.
+1. The UI polish phases agreed on 2026-11-04: the design system is done (Phase 2, awaiting the
+   owner's review); sign-in and the student and till screens follow, each with its own checks.
 2. Device checks not run yet: TalkBack, VoiceOver, maximum font sizes, N6 with a genuinely
    unresolved payment, and the other rows listed under "Not run on a device"; the dashboard's D1–D4.
 3. Final read-through of the README and [design.md](design.md); invite the reviewers; rehearse the
