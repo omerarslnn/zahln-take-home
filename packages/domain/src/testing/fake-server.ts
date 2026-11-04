@@ -108,6 +108,7 @@ export class FakeMensaServer {
       tillId: null,
     },
     { id: 'usr_staff', username: 'staff', role: 'staff', priceGroup: 'staff', tillId: null },
+    { id: 'usr_guest', username: 'guest', role: 'guest', priceGroup: 'guest', tillId: null },
     { id: 'usr_cashier', username: 'cashier', role: 'cashier', priceGroup: null, tillId: 'till_1' },
   ];
   private readonly faults = new Map<Route, Fault[]>();

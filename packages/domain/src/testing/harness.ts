@@ -88,8 +88,23 @@ export class TestEnvironment {
       store?: MemoryIntentStore;
     } = {},
   ): Promise<AppInstance> {
+    const { client, clock } = this.createClient(options.appVersion);
+    const session = this.createSession(client);
+    const signedIn = await session.signIn({ username, password: PASSWORD });
+    if (!signedIn.ok) throw new Error(`sign-in failed: ${signedIn.reason}`);
+    const gate = new PaymentGate(options.appVersion ?? '1.0.0', () => client.getConfig());
+    const controller = await this.startController(
+      { client, clock, session, gate },
+      signedIn.user,
+      options,
+    );
+    const scope = { candidateId: CANDIDATE_ID, userId: signedIn.user.id };
+    return { user: signedIn.user, scope, client, clock, session, gate, controller };
+  }
+
+  /** A client and server clock of one app process, talking to the fake server. */
+  createClient(appVersion = '1.0.0'): { client: ApiClient; clock: ServerClock } {
     const clock = new ServerClock(() => this.mono);
-    const appVersion = options.appVersion ?? '1.0.0';
     const client = createApiClient(
       createTransport({
         baseUrl: 'https://fake.test',
@@ -102,27 +117,39 @@ export class TestEnvironment {
         onServerDate: (sample) => clock.observe(sample),
       }),
     );
-    const session = new SessionCoordinator((credentials) => client.createSession(credentials), {
-      maxLoginAttempts: 1,
+    return { client, clock };
+  }
+
+  /** The app's one session coordinator; `acceptsUser` is the app's role policy. */
+  createSession(
+    client: ApiClient,
+    options: { acceptsUser?: (user: User) => boolean; maxLoginAttempts?: number } = {},
+  ): SessionCoordinator {
+    return new SessionCoordinator((credentials) => client.createSession(credentials), {
+      maxLoginAttempts: options.maxLoginAttempts ?? 1,
       scheduler: this.scheduler,
+      acceptsUser: options.acceptsUser,
     });
-    const signedIn = await session.signIn({ username, password: PASSWORD });
-    if (!signedIn.ok) throw new Error(`sign-in failed: ${signedIn.reason}`);
-    const user = signedIn.user;
-    const scope = { candidateId: CANDIDATE_ID, userId: user.id };
-    const gate = new PaymentGate(appVersion, () => client.getConfig());
+  }
+
+  /** The controller an app builds for a signed-in user, loaded from the (shared) store. */
+  async startController(
+    app: { client: ApiClient; clock: ServerClock; session: SessionCoordinator; gate: PaymentGate },
+    user: User,
+    options: { polling?: PollingOptions; newKey?: () => string; store?: MemoryIntentStore } = {},
+  ): Promise<IntentController> {
     const controller = new IntentController({
-      scope,
+      scope: { candidateId: CANDIDATE_ID, userId: user.id },
       role: user.role,
-      api: createScopedApi(client, session, user.id),
+      api: createScopedApi(app.client, app.session, user.id),
       store: options.store ?? this.store,
-      clock,
+      clock: app.clock,
       scheduler: this.scheduler,
       newKey: options.newKey ?? (() => `key-${(this.keySequence += 1)}`),
-      gate,
+      gate: app.gate,
       polling: options.polling,
     });
     await controller.load();
-    return { user, scope, client, clock, session, gate, controller };
+    return controller;
   }
 }

@@ -1,5 +1,5 @@
 import { colors } from '@mensa/shared';
-import { useState, type Ref } from 'react';
+import { useState, type ReactNode, type Ref } from 'react';
 import { Text, TextInput, View, type TextInputProps } from 'react-native';
 import { fieldLabel } from './a11y-text';
 import { Icon } from './Icon';
@@ -14,6 +14,11 @@ export interface TextFieldProps extends Omit<
   hint?: string;
   /** What is wrong with the value; replaces the hint and is read as part of the field's label. */
   error?: string | null;
+  /**
+   * A control inside the field's border, after the text (a show-password button). It stays its own
+   * screen-reader stop, after the input, with its own label.
+   */
+  trailing?: ReactNode;
   ref?: Ref<TextInput>;
 }
 
@@ -24,7 +29,15 @@ export interface TextFieldProps extends Omit<
  * `autoComplete`…) is passed to the input; pass `ref` to move focus between fields. A screen that
  * validates on submit announces the result with `useAnnouncement`.
  */
-export function TextField({ label, hint, error, editable = true, ref, ...input }: TextFieldProps) {
+export function TextField({
+  label,
+  hint,
+  error,
+  trailing,
+  editable = true,
+  ref,
+  ...input
+}: TextFieldProps) {
   const [focused, setFocused] = useState(false);
   const border = error ? 'border-danger' : focused ? 'border-brand' : 'border-line';
   return (
@@ -36,24 +49,29 @@ export function TextField({ label, hint, error, editable = true, ref, ...input }
       >
         {label}
       </Text>
-      <TextInput
-        ref={ref}
-        {...input}
-        editable={editable}
-        accessibilityLabel={fieldLabel(label, error)}
-        accessibilityHint={error ? undefined : hint}
-        accessibilityState={{ disabled: !editable }}
-        placeholderTextColor={colors.line}
-        onFocus={(event) => {
-          setFocused(true);
-          input.onFocus?.(event);
-        }}
-        onBlur={(event) => {
-          setFocused(false);
-          input.onBlur?.(event);
-        }}
-        className={`min-h-touch rounded-control border px-3 py-3 text-body text-ink ${border} ${editable ? 'bg-surface' : 'bg-canvas'}`}
-      />
+      <View
+        className={`min-h-touch flex-row items-center rounded-control border ${border} ${editable ? 'bg-surface' : 'bg-canvas'}`}
+      >
+        <TextInput
+          ref={ref}
+          {...input}
+          editable={editable}
+          accessibilityLabel={fieldLabel(label, error)}
+          accessibilityHint={error ? undefined : hint}
+          accessibilityState={{ disabled: !editable }}
+          placeholderTextColor={colors.line}
+          onFocus={(event) => {
+            setFocused(true);
+            input.onFocus?.(event);
+          }}
+          onBlur={(event) => {
+            setFocused(false);
+            input.onBlur?.(event);
+          }}
+          className="min-h-touch flex-1 px-3 py-3 text-body text-ink"
+        />
+        {trailing}
+      </View>
       {error ? (
         <View
           importantForAccessibility="no-hide-descendants"

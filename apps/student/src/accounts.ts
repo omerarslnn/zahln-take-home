@@ -1,12 +1,33 @@
-import type { PriceGroup } from '@mensa/api';
+import type { MessageKey } from '@mensa/shared';
+import type { IconName } from './components/ui';
 
 /**
- * The mock API's seeded payer accounts (OpenAPI description, "Seeded logins"). The same order costs
- * a different amount for each price group; the server resolves it. Usernames only: the password is
- * attached by `PaymentServices`, and the session decides who the user really is.
+ * The mock API's seeded payer accounts (OpenAPI description, "Seeded logins"), offered as one-tap
+ * demo accounts. Usernames and descriptions only: the published password is attached by
+ * `PaymentServices`, and the server decides who the user is and which prices they pay.
  */
-export const TEST_ACCOUNTS: readonly { username: string; group: PriceGroup }[] = [
-  { username: 'student', group: 'student' },
-  { username: 'staff', group: 'staff' },
-  { username: 'guest', group: 'guest' },
+export const DEMO_ACCOUNTS: readonly {
+  username: string;
+  title: MessageKey;
+  detail: MessageKey;
+  icon: IconName;
+}[] = [
+  {
+    username: 'student',
+    title: 'signIn.demo.student',
+    detail: 'signIn.demo.student.detail',
+    icon: 'school-outline',
+  },
+  {
+    username: 'staff',
+    title: 'signIn.demo.staff',
+    detail: 'signIn.demo.staff.detail',
+    icon: 'briefcase-outline',
+  },
+  {
+    username: 'guest',
+    title: 'signIn.demo.guest',
+    detail: 'signIn.demo.guest.detail',
+    icon: 'person-outline',
+  },
 ];

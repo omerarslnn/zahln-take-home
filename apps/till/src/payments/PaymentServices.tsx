@@ -1,21 +1,23 @@
 // Wires the platform-neutral payment domain into the app: one PaymentGate, GateRecovery,
-// SessionCoordinator and SecureStore-backed IntentStore per app process, and one IntentController
-// per signed-in user. Each app passes its own polling budget and gate checks.
-// The student app has an identical copy.
-import type { User } from '@mensa/api';
+// SessionCoordinator, SignInFlow and SecureStore-backed IntentStore per app process, and one
+// IntentController per signed-in user. Each app passes the roles it serves, its polling budget
+// and its gate checks. The student app has an identical copy.
+import type { Role, User } from '@mensa/api';
 import {
+  acceptsRoles,
   createScopedApi,
   GateRecovery,
   IntentController,
   PaymentGate,
   realScheduler,
   SessionCoordinator,
+  SignInFlow,
   type GateChecks,
   type GateState,
   type PollingOptions,
   type ScopedApi,
   type ServerTime,
-  type SignInResult,
+  type SignInAttempt,
 } from '@mensa/domain';
 import {
   createContext,
@@ -33,24 +35,35 @@ import { apiClient, appVersion, candidateId, seededPassword, serverClock } from 
 import { newIntentKey } from './ids';
 import { createSecureIntentStore } from './secure-intent-store';
 
-function createServices() {
+function createServices(roles: readonly Role[]) {
   if (!apiClient || !candidateId) return null;
   const client = apiClient;
+  // The role is checked inside the coordinator, before a session is published: an account this
+  // app does not serve never reaches `user`, the navigator or a payment controller.
+  const session = new SessionCoordinator((credentials) => client.createSession(credentials), {
+    acceptsUser: acceptsRoles(roles),
+  });
   return {
     client,
     candidateId,
     gate: new PaymentGate(appVersion, () => client.getConfig()),
-    session: new SessionCoordinator((credentials) => client.createSession(credentials)),
+    session,
+    signIn: new SignInFlow(session, seededPassword || null),
     store: createSecureIntentStore(),
   };
 }
 
 type Services = NonNullable<ReturnType<typeof createServices>>;
 
+const NOT_CONFIGURED: Promise<SignInOutcome> = Promise.resolve({
+  ok: false,
+  reason: 'not_configured',
+});
+
 /** Without `gateChecks`, availability is read at start-up and in the foreground only. */
 const FOREGROUND_READS_ONLY: GateChecks = { retryDelaysMs: [] };
 
-export type SignInOutcome = SignInResult | { ok: false; reason: 'not_configured' };
+export type SignInOutcome = SignInAttempt | { ok: false; reason: 'not_configured' };
 
 interface PaymentServicesValue {
   /** Null when the build lacks its public API configuration. */
@@ -66,8 +79,13 @@ interface PaymentServicesValue {
    * its records the app could start a second payment for an order whose first one is unresolved.
    */
   recordsUnavailable: boolean;
-  /** Signs a seeded test account in; the password stays in this module. */
-  signIn: (username: string) => Promise<SignInOutcome>;
+  /**
+   * Signs in with what the user typed. The password goes to the session coordinator, which keeps
+   * it in memory only while signed in, for the 5-minute re-login (mock-only; see SeededAccount).
+   */
+  signIn: (username: string, password: string) => Promise<SignInOutcome>;
+  /** Signs a published demo account in with the mock's published password (never shown). */
+  signInDemo: (username: string) => Promise<SignInOutcome>;
   signOut: () => void;
   /** Reads payment availability again now (a "check again" button). */
   checkPaymentsAgain: () => void;
@@ -80,16 +98,20 @@ const PaymentServicesContext = createContext<PaymentServicesValue>({
   api: null,
   recordsUnavailable: false,
   signIn: () => Promise.resolve({ ok: false, reason: 'not_configured' }),
+  signInDemo: () => Promise.resolve({ ok: false, reason: 'not_configured' }),
   signOut: () => undefined,
   checkPaymentsAgain: () => undefined,
 });
 
 export function PaymentServicesProvider({
   children,
+  roles,
   polling,
   gateChecks,
 }: {
   children: ReactNode;
+  /** The roles this app serves (PAYER_ROLES or CASHIER_ROLES). Read once, at start-up. */
+  roles: readonly Role[];
   /** Pass a constant: a new object would rebuild the controller. */
   polling?: PollingOptions;
   /**
@@ -98,7 +120,7 @@ export function PaymentServicesProvider({
    */
   gateChecks?: GateChecks;
 }) {
-  const [services] = useState(createServices);
+  const [services] = useState(() => createServices(roles));
   const [loaded, setLoaded] = useState<{ controller: IntentController; api: ScopedApi } | null>(
     null,
   );
@@ -183,10 +205,13 @@ export function PaymentServicesProvider({
   }, [services, gateChecks]);
 
   const signIn = useCallback(
-    async (username: string): Promise<SignInOutcome> => {
-      if (!services || !seededPassword) return { ok: false, reason: 'not_configured' };
-      return services.session.signIn({ username, password: seededPassword });
-    },
+    (username: string, password: string): Promise<SignInOutcome> =>
+      services?.signIn.submit(username, password) ?? NOT_CONFIGURED,
+    [services],
+  );
+  const signInDemo = useCallback(
+    (username: string): Promise<SignInOutcome> =>
+      services?.signIn.signInDemo(username) ?? NOT_CONFIGURED,
     [services],
   );
   const signOut = useCallback(() => services?.session.signOut(), [services]);
@@ -200,10 +225,11 @@ export function PaymentServicesProvider({
       api: loaded?.api ?? null,
       recordsUnavailable,
       signIn,
+      signInDemo,
       signOut,
       checkPaymentsAgain,
     }),
-    [services, user, loaded, recordsUnavailable, signIn, signOut, checkPaymentsAgain],
+    [services, user, loaded, recordsUnavailable, signIn, signInDemo, signOut, checkPaymentsAgain],
   );
   return (
     <PaymentServicesContext.Provider value={value}>{children}</PaymentServicesContext.Provider>

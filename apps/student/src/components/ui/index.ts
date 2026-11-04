@@ -11,6 +11,7 @@ export { Icon, preloadIcons, type IconSize } from './Icon';
 export { ListRow } from './ListRow';
 export { LoadingIndicator, Skeleton } from './Loading';
 export { Notice } from './Notice';
+export { PasswordField } from './PasswordField';
 export { BottomActionBar, Screen } from './Screen';
 export { StatusPill } from './StatusPill';
 export { toneIcon, type ButtonTone, type IconName, type Tone } from './styles';

@@ -68,19 +68,42 @@ export const en = {
   'group.guest': 'Guest',
   'time.berlin': 'Berlin time',
   'diagnostics.version': 'App version',
-  'signIn.intro':
-    "Test version: sign in with one of the mock server's test accounts. The same order costs a different amount for each.",
+  'signIn.welcome': 'Welcome to Mensa Pay',
+  'signIn.tagline': 'Pay for lunch at the mensa by scanning the code at the till.',
   'signIn.notConfigured': 'This build is missing settings:',
-  'signIn.choose': 'Test accounts',
-  'signIn.account': '{name} ({group} price)',
+  'signIn.form.title': 'Sign in',
+  'signIn.username': 'Username',
+  'signIn.password': 'Password',
+  'signIn.password.show': 'Show password',
+  'signIn.password.hide': 'Hide password',
+  'signIn.submit': 'Sign in',
+  'signIn.missing.username': 'Enter your username.',
+  'signIn.missing.password': 'Enter your password.',
+  'signIn.noRegistration':
+    'This demo has no registration. Use the username and password you were given, or a demo account.',
   'signIn.failed': 'Sign-in did not work',
-  'signIn.failure.invalid_credentials': 'The server did not accept the test account.',
+  'signIn.failure.invalid_credentials': 'The username or password is not correct.',
+  'signIn.failure.no_connection':
+    'No connection to the server. Check your internet connection and try again.',
   'signIn.failure.login_unavailable':
-    'The server could not be reached. Check the connection and try again.',
-  'signIn.failure.account_mismatch':
-    'The server answered for a different account, so nothing continues.',
-  'signIn.failure.expired_again': 'The session ended again right away. Try again.',
+    'The server is not answering right now. Try again in a moment.',
+  'signIn.failure.wrong_role.student':
+    'This account cannot pay with Mensa Pay. Sign in with a student, staff or guest account.',
+  'signIn.failure.wrong_role.till':
+    'This is not a cashier account. Sign in with a cashier account to use the till.',
+  'signIn.failure.demo_unavailable':
+    'This build has no demo password. Sign in with a username and password instead.',
   'signIn.failure.not_configured': 'This build has no API settings.',
+  'signIn.demo.title': 'Try a demo account',
+  'signIn.demo.description':
+    "The mock server's published test accounts. The server sets each account's prices.",
+  'signIn.demo.hint': 'Signs in with this demo account.',
+  'signIn.demo.student': 'Student',
+  'signIn.demo.student.detail': 'Enrolled at the university. Pays student prices.',
+  'signIn.demo.staff': 'Staff',
+  'signIn.demo.staff.detail': 'Works at the university. Pays staff prices.',
+  'signIn.demo.guest': 'Guest',
+  'signIn.demo.guest.detail': 'Visitor without a university account. Pays guest prices.',
   'home.title': 'Hello {name}',
   'home.account': 'Test account · {group} price',
   'home.recordsUnavailable.title': 'Unfinished payments could not be read',
@@ -246,9 +269,15 @@ export const en = {
   'event.refund_requested': 'Refund requested',
   'event.refund_completed': 'Refund completed',
   'event.refund_failed': 'Refund failed',
-  'till.signIn.intro':
-    "Test version: sign in as one of the mock server's cashiers. The server decides the mensa and the till.",
-  'till.signIn.choose': 'Cashier test accounts',
+  'till.signIn.tagline': 'Ring up orders, show the payment code and handle refunds.',
+  'till.signIn.form.title': 'Cashier sign-in',
+  'till.signIn.serverAssigns': 'The server assigns your mensa and till when you sign in.',
+  'till.signIn.noRegistration':
+    'Cashier accounts are set up by the mensa. This demo has no registration.',
+  'till.signIn.demo.title': 'Demo cashiers',
+  'till.signIn.demo.description':
+    "The mock server's published cashier accounts, grouped by the mensa the API lists for each.",
+  'till.signIn.demo.cashier': 'Cashier {number}',
   'till.nav.checkout': 'Till',
   'till.nav.payments': 'Payments and refunds',
   'till.signedInAs': 'Signed in as {name}',
@@ -660,19 +689,42 @@ export const de: Record<MessageKey, string> = {
   'group.guest': 'Gäste',
   'time.berlin': 'Berliner Zeit',
   'diagnostics.version': 'App-Version',
-  'signIn.intro':
-    'Testversion: Melde dich mit einem Testkonto des Mock-Servers an. Dieselbe Bestellung kostet für jedes Konto einen anderen Betrag.',
+  'signIn.welcome': 'Willkommen bei Mensa Pay',
+  'signIn.tagline': 'Bezahle dein Essen in der Mensa mit einem Scan des Codes an der Kasse.',
   'signIn.notConfigured': 'Diesem Build fehlen Einstellungen:',
-  'signIn.choose': 'Testkonten',
-  'signIn.account': '{name} (Preis: {group})',
+  'signIn.form.title': 'Anmelden',
+  'signIn.username': 'Benutzername',
+  'signIn.password': 'Passwort',
+  'signIn.password.show': 'Passwort anzeigen',
+  'signIn.password.hide': 'Passwort ausblenden',
+  'signIn.submit': 'Anmelden',
+  'signIn.missing.username': 'Gib deinen Benutzernamen ein.',
+  'signIn.missing.password': 'Gib dein Passwort ein.',
+  'signIn.noRegistration':
+    'In dieser Demo gibt es keine Registrierung. Nutze deine Zugangsdaten oder ein Demokonto.',
   'signIn.failed': 'Anmeldung fehlgeschlagen',
-  'signIn.failure.invalid_credentials': 'Der Server hat das Testkonto nicht akzeptiert.',
+  'signIn.failure.invalid_credentials': 'Benutzername oder Passwort ist nicht korrekt.',
+  'signIn.failure.no_connection':
+    'Keine Verbindung zum Server. Prüfe deine Internetverbindung und versuche es erneut.',
   'signIn.failure.login_unavailable':
-    'Der Server war nicht erreichbar. Prüfe die Verbindung und versuche es erneut.',
-  'signIn.failure.account_mismatch':
-    'Der Server hat für ein anderes Konto geantwortet, daher geht nichts weiter.',
-  'signIn.failure.expired_again': 'Die Sitzung ist sofort wieder abgelaufen. Versuche es erneut.',
+    'Der Server antwortet gerade nicht. Versuche es gleich noch einmal.',
+  'signIn.failure.wrong_role.student':
+    'Mit diesem Konto kannst du in Mensa Pay nicht bezahlen. Melde dich mit einem Konto für Studierende, Beschäftigte oder Gäste an.',
+  'signIn.failure.wrong_role.till':
+    'Das ist kein Kassenkonto. Melde dich mit einem Kassenkonto an, um die Kasse zu nutzen.',
+  'signIn.failure.demo_unavailable':
+    'Diesem Build fehlt das Demo-Passwort. Melde dich stattdessen mit Benutzername und Passwort an.',
   'signIn.failure.not_configured': 'Diesem Build fehlen die API-Einstellungen.',
+  'signIn.demo.title': 'Demokonto ausprobieren',
+  'signIn.demo.description':
+    'Die veröffentlichten Testkonten des Mock-Servers. Die Preise jedes Kontos legt der Server fest.',
+  'signIn.demo.hint': 'Meldet dich mit diesem Demokonto an.',
+  'signIn.demo.student': 'Studierende',
+  'signIn.demo.student.detail': 'An der Hochschule eingeschrieben. Zahlt Studierendenpreise.',
+  'signIn.demo.staff': 'Beschäftigte',
+  'signIn.demo.staff.detail': 'Arbeitet an der Hochschule. Zahlt Beschäftigtenpreise.',
+  'signIn.demo.guest': 'Gast',
+  'signIn.demo.guest.detail': 'Besuch ohne Hochschulkonto. Zahlt Gästepreise.',
   'home.title': 'Hallo {name}',
   'home.account': 'Testkonto · Preis: {group}',
   'home.recordsUnavailable.title': 'Offene Zahlungen konnten nicht gelesen werden',
@@ -848,9 +900,15 @@ export const de: Record<MessageKey, string> = {
   'event.refund_requested': 'Erstattung angefordert',
   'event.refund_completed': 'Erstattung abgeschlossen',
   'event.refund_failed': 'Erstattung fehlgeschlagen',
-  'till.signIn.intro':
-    'Testversion: Melde dich als eine Kassenkraft des Mock-Servers an. Mensa und Kasse legt der Server fest.',
-  'till.signIn.choose': 'Testkonten für die Kasse',
+  'till.signIn.tagline': 'Bestellungen bonieren, den Zahlcode zeigen und Erstattungen bearbeiten.',
+  'till.signIn.form.title': 'Anmeldung an der Kasse',
+  'till.signIn.serverAssigns': 'Mensa und Kasse weist dir der Server bei der Anmeldung zu.',
+  'till.signIn.noRegistration':
+    'Kassenkonten richtet die Mensa ein. In dieser Demo gibt es keine Registrierung.',
+  'till.signIn.demo.title': 'Demo-Kassenkonten',
+  'till.signIn.demo.description':
+    'Die veröffentlichten Kassenkonten des Mock-Servers, nach der Mensa, die die API für jedes nennt.',
+  'till.signIn.demo.cashier': 'Kassenkonto {number}',
   'till.nav.checkout': 'Kasse',
   'till.nav.payments': 'Zahlungen und Erstattungen',
   'till.signedInAs': 'Angemeldet als {name}',

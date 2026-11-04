@@ -24,22 +24,34 @@ export function BottomActionBar({ children }: { children: ReactNode }) {
 
 /**
  * A scrolling screen body on the canvas: 16 dp gutters, 16 dp between blocks, the safe area
- * respected, usable with the keyboard open. `footer` goes into a BottomActionBar.
+ * respected, usable with the keyboard open. `footer` goes into a BottomActionBar. `headerless`:
+ * the screen has no navigation bar (sign-in), so the content starts below the status bar.
  */
-export function Screen({ children, footer }: { children: ReactNode; footer?: ReactNode }) {
+export function Screen({
+  children,
+  footer,
+  headerless,
+}: {
+  children: ReactNode;
+  footer?: ReactNode;
+  headerless?: boolean;
+}) {
   const insets = useSafeAreaInsets();
   return (
     // A plain style, not className: NativeWind did not apply classes to KeyboardAvoidingView here
     // (seen on Android in a release build and in Expo Go), which left every screen empty.
+    // Without a navigation bar, the status bar's area stays canvas-coloured above the scrolling
+    // content, so text never scrolls under the clock and icons.
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: colors.canvas }}
+      style={{ flex: 1, backgroundColor: colors.canvas, paddingTop: headerless ? insets.top : 0 }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView
         className="flex-1"
         keyboardShouldPersistTaps="handled"
-        contentContainerClassName="gap-4 px-4 pt-4"
+        contentContainerClassName="gap-4 px-4"
         contentContainerStyle={{
+          paddingTop: space.gutter,
           paddingBottom: footer ? space.gutter : insets.bottom + space.gutter,
         }}
       >

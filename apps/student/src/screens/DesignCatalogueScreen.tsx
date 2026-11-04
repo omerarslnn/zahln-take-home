@@ -17,6 +17,7 @@ import {
   ListRow,
   LoadingIndicator,
   Notice,
+  PasswordField,
   Screen,
   Section,
   Skeleton,
@@ -153,6 +154,21 @@ export function DesignCatalogueScreen() {
             onPress={() => undefined}
           />
           <ListRow separated title="Read-only row" value="€0.90" />
+          <ListRow
+            separated
+            icon="school-outline"
+            title="With an icon"
+            subtitle="A demo account row"
+            onPress={() => undefined}
+          />
+          <ListRow separated icon="briefcase-outline" title="Busy" busy onPress={() => undefined} />
+          <ListRow
+            separated
+            icon="person-outline"
+            title="Disabled"
+            disabled
+            onPress={() => undefined}
+          />
           <LabelledValue label="Labelled value" value="pay_41fe7c8855aafc91" />
         </Card>
       </Section>
@@ -166,7 +182,13 @@ export function DesignCatalogueScreen() {
           keyboardType="decimal-pad"
           error={decimals.length > 2 ? 'Use at most two decimal places.' : null}
         />
-        <TextField label="Secure entry" value={pin} onChangeText={setPin} secureTextEntry />
+        <PasswordField
+          label="Password"
+          showLabel="Show password"
+          hideLabel="Hide password"
+          value={pin}
+          onChangeText={setPin}
+        />
         <TextField label="Not editable" value="ord_4426620cc8075837" editable={false} />
       </Section>
 

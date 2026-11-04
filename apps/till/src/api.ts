@@ -11,9 +11,9 @@ const apiConfig = parsePublicApiConfig({
 
 /**
  * The password of the mock's seeded test accounts, published in the API description. It is in the
- * bundle on purpose: the app signs a chosen test account in with it, and again when the 5-minute
- * token expires. Mock-specific; a real app would never ship a password. Only `PaymentServices`
- * reads it; components, logs and saved records never see it.
+ * bundle on purpose, for the one-tap demo accounts only; typed sign-in does not need it. Mock-
+ * specific; a real app would never ship a password. Only `PaymentServices` reads it; components,
+ * logs and saved records never see it.
  */
 export const seededPassword = process.env.EXPO_PUBLIC_SEEDED_PASSWORD ?? '';
 
@@ -44,7 +44,12 @@ const ENV_NAMES = {
   baseUrl: 'EXPO_PUBLIC_API_BASE_URL',
   candidateId: 'EXPO_PUBLIC_CANDIDATE_ID',
 } as const;
+/** Settings without which nothing can sign in. */
+export const missingApiEnvNames = apiConfig.ok
+  ? []
+  : apiConfig.missing.map((key) => ENV_NAMES[key]);
+/** Without the published demo password only the demo accounts are unavailable. */
 export const missingEnvNames = [
-  ...(apiConfig.ok ? [] : apiConfig.missing.map((key) => ENV_NAMES[key])),
+  ...missingApiEnvNames,
   ...(seededPassword ? [] : ['EXPO_PUBLIC_SEEDED_PASSWORD']),
 ];

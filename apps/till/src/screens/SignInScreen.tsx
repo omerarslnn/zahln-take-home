@@ -1,82 +1,111 @@
+import { colors } from '@mensa/shared';
 import { useI18n } from '@mensa/shared/react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useState } from 'react';
 import { Text, useWindowDimensions, View } from 'react-native';
-import { CASHIER_ACCOUNTS } from '../accounts';
-import { missingEnvNames } from '../api';
-import { LanguageSwitch } from '../components/Foundation';
-import { Body, Button, Notice, Screen } from '../components/ui';
+import { CASHIER_LOCATIONS } from '../accounts';
+import { missingApiEnvNames, missingEnvNames } from '../api';
+import { BrandHeader, SignInForm, useSignIn, type SignInState } from '../components/SignIn';
+import { Body, Button, Card, Icon, ListRow, Notice, Screen } from '../components/ui';
 import type { TillStackParamList } from '../navigation';
-import { usePaymentServices, type SignInOutcome } from '../payments/PaymentServices';
+import { usePaymentServices } from '../payments/PaymentServices';
 
 type Props = NativeStackScreenProps<TillStackParamList, 'SignIn'>;
-type Failure = Exclude<Exclude<SignInOutcome, { ok: true }>['reason'], 'superseded'>;
 
-/** Picks one of the mock's seeded cashier accounts; the session decides the mensa and the till. */
+/** Keeps each column one group for Android screen readers (see CheckoutScreen). */
+const SCREEN_READER_GROUP = { collapsable: false, importantForAccessibility: 'yes' } as const;
+
+/**
+ * Cashier sign-in, laid out for the iPad first: brand and form on the left, the demo cashiers by
+ * mensa on the right; one column on narrower screens. The session decides the mensa and the till,
+ * and only a cashier account is accepted (checked before anyone sees the account). Checkout
+ * appears once the session exists.
+ */
 export function SignInScreen({ navigation }: Props) {
   const { t } = useI18n();
   const { width } = useWindowDimensions();
-  const { signIn } = usePaymentServices();
-  const [pending, setPending] = useState<string | null>(null);
-  // 'superseded' (a newer sign-in replaced this one) is not a failure to show.
-  const [failure, setFailure] = useState<Failure | null>(null);
+  const wide = width >= 768;
+  const { services } = usePaymentServices();
+  const signIn = useSignIn('till');
+  const configured = services !== null && missingApiEnvNames.length === 0;
 
-  async function choose(username: string) {
-    if (pending) return;
-    setPending(username);
-    setFailure(null);
-    const result = await signIn(username);
-    setPending(null);
-    if (!result.ok && result.reason !== 'superseded') setFailure(result.reason);
-  }
-
-  return (
-    <Screen>
-      <View className="gap-2">
-        <Text accessibilityRole="header" className="text-3xl font-bold text-ink">
-          {t('till.title')}
-        </Text>
-        <Body muted>{t('till.signIn.intro')}</Body>
-      </View>
-
+  const intro = (
+    <>
+      <BrandHeader icon="storefront" title={t('till.title')} tagline={t('till.signIn.tagline')} />
       {missingEnvNames.length > 0 ? (
         <Notice
-          tone="error"
+          tone={configured ? 'warning' : 'error'}
           title={t('signIn.notConfigured')}
           description={missingEnvNames.join(', ')}
         />
       ) : null}
-
-      <Text accessibilityRole="header" className="text-lg font-semibold text-ink">
-        {t('till.signIn.choose')}
-      </Text>
-      <View className="flex-row flex-wrap gap-3">
-        {CASHIER_ACCOUNTS.map((account) => (
-          <View key={account.username} style={{ width: width >= 768 ? '48%' : '100%' }}>
-            <Button
-              label={`${account.username} · ${account.place}`}
-              busy={pending === account.username}
-              disabled={pending !== null && pending !== account.username}
-              onPress={() => void choose(account.username)}
-            />
-          </View>
-        ))}
-      </View>
-
-      {failure ? (
-        <Notice
-          tone="error"
-          title={t('signIn.failed')}
-          description={t(`signIn.failure.${failure}`)}
-        />
-      ) : null}
-
-      <LanguageSwitch />
-      <Button
-        tone="secondary"
-        label={t('nav.diagnostics')}
-        onPress={() => navigation.navigate('Diagnostics')}
+      <SignInForm
+        state={signIn}
+        title={t('till.signIn.form.title')}
+        footnote={`${t('till.signIn.serverAssigns')} ${t('till.signIn.noRegistration')}`}
+        enabled={configured}
       />
+    </>
+  );
+  const diagnostics = (
+    <Button
+      tone="tertiary"
+      icon="construct-outline"
+      label={t('nav.diagnostics')}
+      onPress={() => navigation.navigate('Diagnostics')}
+    />
+  );
+
+  return (
+    <Screen headerless>
+      {wide ? (
+        <View className="flex-row items-start gap-6">
+          <View className="flex-1 gap-4" {...SCREEN_READER_GROUP}>
+            {intro}
+            {diagnostics}
+          </View>
+          <View className="flex-1" {...SCREEN_READER_GROUP}>
+            <DemoCashiers state={signIn} enabled={configured} />
+          </View>
+        </View>
+      ) : (
+        <>
+          {intro}
+          <DemoCashiers state={signIn} enabled={configured} />
+          {diagnostics}
+        </>
+      )}
     </Screen>
+  );
+}
+
+/** The published cashier accounts, one group per mensa; a tap signs that cashier in. */
+function DemoCashiers({ state, enabled }: { state: SignInState; enabled: boolean }) {
+  const { t } = useI18n();
+  return (
+    <Card title={t('till.signIn.demo.title')}>
+      <Body muted>{t('till.signIn.demo.description')}</Body>
+      {CASHIER_LOCATIONS.map((location) => (
+        <View key={location.place} className="pt-2">
+          <View className="flex-row items-center gap-2 pb-1">
+            <Icon name="location-outline" size="sm" color={colors.inkMuted} />
+            <Text accessibilityRole="header" className="flex-1 text-body font-semibold text-ink">
+              {location.place}
+            </Text>
+          </View>
+          {location.cashiers.map((cashier) => (
+            <ListRow
+              key={cashier.username}
+              title={t('till.signIn.demo.cashier', { number: cashier.number })}
+              subtitle={cashier.username}
+              hint={t('signIn.demo.hint')}
+              separated
+              busy={state.pending === cashier.username}
+              disabled={!enabled || (state.pending !== null && state.pending !== cashier.username)}
+              onPress={() => void state.signInDemo(cashier.username)}
+            />
+          ))}
+        </View>
+      ))}
+    </Card>
   );
 }

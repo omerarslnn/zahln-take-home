@@ -1,4 +1,4 @@
-import type { GateChecks } from '@mensa/domain';
+import { PAYER_ROLES, type GateChecks } from '@mensa/domain';
 import { pickLocale } from '@mensa/shared';
 import { I18nProvider } from '@mensa/shared/react';
 import { NavigationContainer } from '@react-navigation/native';
@@ -27,7 +27,7 @@ export default function App() {
     <SafeAreaProvider>
       <I18nProvider initialLocale={pickLocale(deviceLanguage)}>
         {/* Default polling: a payment usually settles in seconds; checking stops after 3 minutes. */}
-        <PaymentServicesProvider gateChecks={GATE_CHECKS}>
+        <PaymentServicesProvider roles={PAYER_ROLES} gateChecks={GATE_CHECKS}>
           <NavigationContainer>
             <RootNavigator />
           </NavigationContainer>

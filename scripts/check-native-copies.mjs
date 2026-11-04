@@ -21,6 +21,8 @@ const SHARED = [
   { path: 'src/components/ui' },
   { path: 'src/components/Foundation.tsx' },
   { path: 'src/components/payment-text.ts' },
+  { path: 'src/components/sign-in-text.ts' },
+  { path: 'src/components/SignIn.tsx' },
   { path: 'src/components/PaymentDetails.tsx' },
   { path: 'src/components/SecureStorageCheck.tsx' },
   { path: 'src/components/ConnectionCheck.tsx' },

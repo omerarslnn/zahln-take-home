@@ -64,7 +64,12 @@ export function RootNavigator() {
           />
         </>
       ) : (
-        <Stack.Screen name="SignIn" component={SignInScreen} options={{ title: t('nav.signIn') }} />
+        <Stack.Screen
+          name="SignIn"
+          component={SignInScreen}
+          // The screen shows the app's own brand header instead of a navigation bar.
+          options={{ title: t('nav.signIn'), headerShown: false }}
+        />
       )}
       <Stack.Screen
         name="Diagnostics"

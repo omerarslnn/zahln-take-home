@@ -1,5 +1,11 @@
 import type { User } from '@mensa/api';
-import { ResourceCache, SessionCoordinator, type SessionFailure } from '@mensa/domain';
+import {
+  acceptsRoles,
+  ResourceCache,
+  SessionCoordinator,
+  type SessionFailure,
+  type SignInResult,
+} from '@mensa/domain';
 import { createFinanceApi, type FinanceApi } from '@mensa/domain/finance';
 import {
   createContext,
@@ -27,6 +33,15 @@ export interface FinanceServices {
 
 export type SignInFailure = SessionFailure | 'not_finance' | 'not_configured';
 
+/**
+ * The coordinator's sign-in failures in the dashboard's existing messages: a non-finance account
+ * is 'not_finance'; no connection reads like any other unreachable server.
+ */
+function failureOf(reason: Exclude<Extract<SignInResult, { ok: false }>['reason'], 'superseded'>) {
+  if (reason === 'wrong_role') return 'not_finance';
+  return reason === 'no_connection' ? 'login_unavailable' : reason;
+}
+
 type SessionState =
   | { status: 'signed_out'; failure: SignInFailure | null }
   | { status: 'signing_in' }
@@ -50,8 +65,11 @@ const FinanceSessionContext = createContext<FinanceSessionValue | null>(null);
 export function FinanceSessionProvider({ children }: { children: ReactNode }) {
   const coordinator = useMemo(() => {
     const client = apiClient;
+    // Only a finance account is ever published by the coordinator (checked before the session).
     return client
-      ? new SessionCoordinator((credentials) => client.createSession(credentials))
+      ? new SessionCoordinator((credentials) => client.createSession(credentials), {
+          acceptsUser: acceptsRoles(['finance']),
+        })
       : null;
   }, []);
   const [state, setState] = useState<SessionState>({ status: 'signed_out', failure: null });
@@ -68,12 +86,7 @@ export function FinanceSessionProvider({ children }: { children: ReactNode }) {
     });
     if (!result.ok) {
       if (result.reason !== 'superseded')
-        setState({ status: 'signed_out', failure: result.reason });
-      return;
-    }
-    if (result.user.role !== 'finance') {
-      coordinator.signOut();
-      setState({ status: 'signed_out', failure: 'not_finance' });
+        setState({ status: 'signed_out', failure: failureOf(result.reason) });
       return;
     }
     setState({

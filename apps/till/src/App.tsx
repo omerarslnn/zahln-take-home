@@ -1,4 +1,4 @@
-import type { PollingOptions } from '@mensa/domain';
+import { CASHIER_ROLES, type PollingOptions } from '@mensa/domain';
 import { pickLocale } from '@mensa/shared';
 import { I18nProvider } from '@mensa/shared/react';
 import { NavigationContainer } from '@react-navigation/native';
@@ -25,7 +25,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <I18nProvider initialLocale={pickLocale(deviceLanguage)}>
-        <PaymentServicesProvider polling={TILL_POLLING}>
+        <PaymentServicesProvider roles={CASHIER_ROLES} polling={TILL_POLLING}>
           <NavigationContainer>
             <TillNavigator />
           </NavigationContainer>

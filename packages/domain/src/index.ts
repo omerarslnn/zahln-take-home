@@ -81,10 +81,20 @@ export {
   SessionCoordinator,
   type CallResult,
   type ScopedApi,
+  type LoginFailure,
   type SeededAccount,
   type SessionFailure,
   type SignInResult,
 } from './session';
+export {
+  acceptsRoles,
+  CASHIER_ROLES,
+  checkCredentials,
+  PAYER_ROLES,
+  SignInFlow,
+  type MissingFields,
+  type SignInAttempt,
+} from './sign-in';
 export { newerOf, type Versioned } from './versioning';
 export { classifyWrite, type AttemptOutcome, type WriteOperation } from './write-outcome';
 export type {
