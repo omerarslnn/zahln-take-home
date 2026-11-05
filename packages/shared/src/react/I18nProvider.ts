@@ -13,12 +13,23 @@ export interface I18nValue {
 
 const I18nContext = createContext<I18nValue | null>(null);
 
-/** Holds the current UI language for one app. */
-export function I18nProvider(props: { initialLocale: Locale; children: ReactNode }) {
-  const [locale, setLocale] = useState(props.initialLocale);
+/**
+ * The current UI language for one app. With `initialLocale` the provider keeps the language itself
+ * and `setLocale` changes it (the dashboard's switch). With `locale` the app decides (the native
+ * apps follow the device language) and `setLocale` calls `onLocaleChange`. Changing the language
+ * re-renders only what reads translations; nothing below is remounted.
+ */
+export function I18nProvider(
+  props: { children: ReactNode } & (
+    { initialLocale: Locale } | { locale: Locale; onLocaleChange: (locale: Locale) => void }
+  ),
+) {
+  const [own, setOwn] = useState('locale' in props ? props.locale : props.initialLocale);
+  const locale = 'locale' in props ? props.locale : own;
+  const setLocale = 'locale' in props ? props.onLocaleChange : setOwn;
   const value = useMemo<I18nValue>(
     () => ({ locale, setLocale, t: (key, params) => translate(locale, key, params) }),
-    [locale],
+    [locale, setLocale],
   );
   return createElement(I18nContext.Provider, { value }, props.children);
 }

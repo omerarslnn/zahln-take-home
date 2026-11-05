@@ -3,7 +3,6 @@ import { formatCents } from '@mensa/shared';
 import { useI18n } from '@mensa/shared/react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Pressable, Text, View } from 'react-native';
-import { LanguageSwitch } from '../components/Foundation';
 import { PaymentAvailability } from '../components/PaymentAvailability';
 import { priceGroupKey } from '../components/payment-text';
 import { Body, Button, Card, Notice, Screen, StatusPill } from '../components/ui';
@@ -82,7 +81,6 @@ export function HomeScreen({ navigation }: Props) {
         disabled={!controller}
         onPress={() => navigation.navigate('History')}
       />
-      <LanguageSwitch />
       <Button tone="secondary" label={t('home.switchAccount')} onPress={signOut} />
       <Button
         tone="secondary"

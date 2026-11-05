@@ -17,7 +17,6 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { LanguageSwitch } from '../components/Foundation';
 import { OrderQr } from '../components/OrderQr';
 import { orderStatusText, priceGroupKey } from '../components/payment-text';
 import { Body, Button, Card, Notice, StatusPill, useAnnouncement } from '../components/ui';
@@ -163,7 +162,6 @@ export function CheckoutScreen({ navigation }: Props) {
         </View>
       </View>
 
-      <LanguageSwitch />
       <Button
         tone="secondary"
         label={t('nav.diagnostics')}

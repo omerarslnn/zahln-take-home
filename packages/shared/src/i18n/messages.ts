@@ -6,6 +6,9 @@ export const en = {
   'language.label': 'Language',
   'language.de': 'Deutsch',
   'language.en': 'English',
+  'language.system': 'Device language ({language})',
+  'language.description':
+    'The app follows the device language: German, otherwise English. A choice here is for testing and lasts until the app is closed.',
 
   'connection.title': 'API connection check',
   'connection.description':
@@ -624,6 +627,9 @@ export const de: Record<MessageKey, string> = {
   'language.label': 'Sprache',
   'language.de': 'Deutsch',
   'language.en': 'English',
+  'language.system': 'Gerätesprache ({language})',
+  'language.description':
+    'Die App folgt der Gerätesprache: Deutsch, sonst Englisch. Eine Auswahl hier dient zum Testen und gilt, bis die App geschlossen wird.',
 
   'connection.title': 'API-Verbindungstest',
   'connection.description':

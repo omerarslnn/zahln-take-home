@@ -20,6 +20,7 @@ export { parseEuroAmount, type EuroInput } from './format/euro-input';
 export { formatCents } from './format/money';
 export { de, en, type MessageKey } from './i18n/messages';
 export { LOCALES, pickLocale, translate, type Locale, type MessageParams } from './i18n/translate';
+export { resolveLocale, systemLocale, type LanguageChoice } from './i18n/language';
 export {
   colors,
   iconSize,

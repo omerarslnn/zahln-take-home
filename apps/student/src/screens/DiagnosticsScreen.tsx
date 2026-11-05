@@ -3,6 +3,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Text } from 'react-native';
 import { appVersion } from '../api';
 import { ConnectionCheck } from '../components/ConnectionCheck';
+import { LanguageSetting } from '../components/LanguageSetting';
 import { PaymentAvailability } from '../components/PaymentAvailability';
 import { SecureStorageCheck } from '../components/SecureStorageCheck';
 import { Button, Card, LabelledValue, Screen } from '../components/ui';
@@ -24,6 +25,7 @@ export function DiagnosticsScreen({ navigation }: Props) {
       <PaymentAvailability />
       <ConnectionCheck />
       <SecureStorageCheck />
+      <LanguageSetting />
       {__DEV__ ? (
         <Button
           tone="tertiary"
