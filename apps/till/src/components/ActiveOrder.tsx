@@ -304,9 +304,17 @@ export function ActiveOrderView(props: ActiveOrderViewProps) {
     return (
       <View className="gap-4">
         {main}
+        {/* Each card is its own screen-reader group (not flattened by Android), or TalkBack reads
+            the two side by side line by line across both. */}
         <View className="flex-row flex-wrap items-start gap-4">
-          {statusCard ? <View className="min-w-80 flex-1">{statusCard}</View> : null}
-          <View className="min-w-80 flex-1">{totals}</View>
+          {statusCard ? (
+            <View className="min-w-80 flex-1" collapsable={false} importantForAccessibility="yes">
+              {statusCard}
+            </View>
+          ) : null}
+          <View className="min-w-80 flex-1" collapsable={false} importantForAccessibility="yes">
+            {totals}
+          </View>
         </View>
         {actions}
       </View>
