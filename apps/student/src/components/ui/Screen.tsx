@@ -1,6 +1,6 @@
 import { colors, space } from '@mensa/shared';
 import type { ReactNode } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
+import { KeyboardAvoidingView, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeyboardOpen } from './hooks';
 
@@ -42,9 +42,13 @@ export function Screen({
     // (seen on Android in a release build and in Expo Go), which left every screen empty.
     // Without a navigation bar, the status bar's area stays canvas-coloured above the scrolling
     // content, so text never scrolls under the clock and icons.
+    // `padding` on both platforms: SDK 54 draws Android apps edge to edge, so the window no longer
+    // shrinks for the keyboard and a focused field near the bottom stayed hidden under it (seen on
+    // the till's refund amount on a phone). The view pads by the keyboard's actual overlap only, so
+    // where the system still resizes the window the overlap is zero and nothing is added twice.
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: colors.canvas, paddingTop: headerless ? insets.top : 0 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior="padding"
     >
       <ScrollView
         className="flex-1"
