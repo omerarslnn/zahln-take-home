@@ -1,11 +1,10 @@
 import { useI18n } from '@mensa/shared/react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Text } from 'react-native';
 import { appVersion } from '../api';
 import { ConnectionCheck } from '../components/ConnectionCheck';
 import { LanguageSetting } from '../components/LanguageSetting';
 import { SecureStorageCheck } from '../components/SecureStorageCheck';
-import { Button, Card, LabelledValue, Screen } from '../components/ui';
+import { Button, Card, LabelledValue, Screen, Title } from '../components/ui';
 import type { TillStackParamList } from '../navigation';
 
 type Props = NativeStackScreenProps<TillStackParamList, 'Diagnostics'>;
@@ -15,9 +14,7 @@ export function DiagnosticsScreen({ navigation }: Props) {
   const { t } = useI18n();
   return (
     <Screen>
-      <Text accessibilityRole="header" className="text-2xl font-bold text-ink">
-        {t('nav.diagnostics')}
-      </Text>
+      <Title>{t('nav.diagnostics')}</Title>
       <Card>
         <LabelledValue label={t('diagnostics.version')} value={appVersion ?? '–'} />
       </Card>

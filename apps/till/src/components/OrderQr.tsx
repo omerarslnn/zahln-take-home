@@ -14,8 +14,9 @@ type Run = { dark: boolean; length: number };
  * SVG library: react-native-svg is an optional peer of NativeWind's css-interop, and installing it
  * in one app gave the workspace a second css-interop copy that broke styling in the other app.
  * Error correction M survives a scratched or glare-covered screen. The payload names the order,
- * not an amount, so it is safe to show to anyone at the till. Memoized: the till re-renders every
- * second for its countdown, and the code does not change.
+ * not an amount, so it is safe to show to anyone at the till. Memoized on the payload and size: a
+ * status change around it never redraws the code (the countdown ticks in its own component), and a
+ * rotation redraws it only if the measured size changes.
  */
 export const OrderQr = memo(function OrderQr({
   payload,
