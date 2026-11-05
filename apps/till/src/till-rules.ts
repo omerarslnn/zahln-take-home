@@ -2,7 +2,7 @@
 // Nothing here decides money: prices and totals are always the server's.
 import type { MenuItem, OrderStatus } from '@mensa/api';
 import type { Basket } from '@mensa/domain';
-import type { Locale } from '@mensa/shared';
+import { parseEuroAmount, type Locale } from '@mensa/shared';
 
 /**
  * Keep the screen on only while a payer may still scan the code: the order is open (or its payment
@@ -39,4 +39,36 @@ export function basketLines(
     name: menu.find((item) => item.id === line.itemId)?.name[locale] ?? line.itemId,
     quantity: line.quantity,
   }));
+}
+
+/** What the refund form says about the typed amount; the server's refundable amount is the cap. */
+export type RefundAmountCheck =
+  | { ok: true; cents: number }
+  | {
+      ok: false;
+      /** Shown under the field; null while the field is empty (nothing to complain about yet). */
+      error:
+        | { key: 'empty' | 'invalid' | 'too_precise' | 'zero' | 'too_large' }
+        | { key: 'tooMuch'; refundableCents: number }
+        | null;
+    };
+
+/**
+ * Checks a typed refund amount: euros with a comma or a point and at most two decimals (the shared
+ * parser), more than zero, and no more than the server's `refundableAmountCents`, which already
+ * reserves refunds still being processed. Only an `ok` amount can go on to the confirmation.
+ */
+export function checkRefundAmount(text: string, refundableCents: number): RefundAmountCheck {
+  const parsed = parseEuroAmount(text);
+  if (!parsed.ok) return { ok: false, error: text === '' ? null : { key: parsed.reason } };
+  if (parsed.cents > refundableCents) {
+    return { ok: false, error: { key: 'tooMuch', refundableCents } };
+  }
+  return { ok: true, cents: parsed.cents };
+}
+
+/** Cents as the refund field expects them ("4,40" in German, "4.40" in English). */
+export function refundInputText(cents: number, locale: Locale): string {
+  const separator = locale === 'de' ? ',' : '.';
+  return `${Math.floor(cents / 100)}${separator}${String(cents % 100).padStart(2, '0')}`;
 }

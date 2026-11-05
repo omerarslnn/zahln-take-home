@@ -1,6 +1,7 @@
-// The payment history as the screen shows it, as pure functions: sections by Berlin calendar day
-// and the words of each row. Everything comes from the server's payments and this phone's saved
-// actions; nothing is computed from amounts.
+// Payment lists as the screens show them, as pure functions: sections by Berlin calendar day and
+// the words of each row, for the payer's history and the till's payments. The till has an
+// identical copy; the tests live with this one. Everything comes from the server's payments and
+// this phone's saved actions; nothing is computed from amounts.
 import type { Payment } from '@mensa/api';
 import type { HistoryEntry } from '@mensa/domain';
 import {
@@ -12,7 +13,7 @@ import {
   type MessageKey,
   type MessageParams,
 } from '@mensa/shared';
-import { paymentStatusText } from './components/payment-text';
+import { paymentStatusText, priceGroupKey } from './components/payment-text';
 import type { Tone } from './components/ui';
 
 export type SectionTitle =
@@ -63,15 +64,24 @@ export interface RowText {
 }
 
 /**
- * A server payment as a history row: the mensa, the server's status in words, the amount, and the
- * Berlin time, till and any refund (completed or still being processed) as the subtitle. Screen
- * readers hear these parts in this order, status included.
+ * A server payment as a list row: who or where (the mensa for the payer's history, the payer for
+ * the till), the server's status in words, the amount, and the Berlin time, the till or the price
+ * group, any refund (completed or still being processed) and, on the till, the payment ID to match
+ * a search. Screen readers hear these parts in this order, status included.
  */
-export function paymentRowText(payment: Payment, t: Translate, locale: Locale): RowText {
+export function paymentRowText(
+  payment: Payment,
+  t: Translate,
+  locale: Locale,
+  perspective: 'payer' | 'till' = 'payer',
+): RowText {
   const status = paymentStatusText(payment.status);
+  const till = perspective === 'till';
   const notes = [
     formatBerlinClock(payment.createdAt, locale),
-    payment.till.name,
+    till
+      ? t('home.priceGroup', { group: t(priceGroupKey(payment.priceGroup)) })
+      : payment.till.name,
     payment.refundedAmountCents > 0
       ? t('history.refunded', { amount: formatCents(payment.refundedAmountCents, locale) })
       : null,
@@ -80,9 +90,10 @@ export function paymentRowText(payment: Payment, t: Translate, locale: Locale): 
           amount: formatCents(payment.pendingRefundAmountCents, locale),
         })
       : null,
+    till ? payment.id : null,
   ];
   return {
-    title: payment.mensa.name,
+    title: till ? payment.payer.displayName : payment.mensa.name,
     status: { tone: status.tone, label: t(status.key) },
     value: formatCents(payment.amountCents, locale),
     subtitle: notes.filter(Boolean).join(' · '),

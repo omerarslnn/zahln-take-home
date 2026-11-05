@@ -101,6 +101,22 @@ describe('paymentRowText', () => {
   });
 });
 
+describe('paymentRowText on the till', () => {
+  const t = (key: MessageKey, params?: MessageParams) => translate('en', key, params);
+
+  it('names the payer, speaks the status and shows the price group and payment ID', () => {
+    const refunded = payment('pay_abc', '2026-11-05T12:53:00Z', {
+      status: 'confirmed',
+      refundedAmountCents: 100,
+    });
+    const row = paymentRowText(refunded, t, 'en', 'till');
+    assert.equal(
+      spokenPhrase([row.title, row.status.label, row.value, row.subtitle]),
+      'Test Student, Confirmed, €7.20, 13:53 · Student price · €1.00 refunded · pay_abc',
+    );
+  });
+});
+
 describe('historyEventVisual', () => {
   it('gives every server event a tone; a requested refund is not yet done', () => {
     const types = [

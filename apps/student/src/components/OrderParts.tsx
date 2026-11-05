@@ -1,5 +1,5 @@
-// Building blocks of the order review and the payment detail: where, what, how long. They only
-// display what the server sent; no amount is calculated here.
+// Building blocks of the order review and the payment detail: where, what, how long. The till has
+// an identical copy. They only display what the server sent; no amount is calculated here.
 import { colors, formatCents } from '@mensa/shared';
 import { useI18n } from '@mensa/shared/react';
 import type { Ref } from 'react';

@@ -2,7 +2,14 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { MenuItem } from '@mensa/api';
 import { addItem, MAX_LINE_QUANTITY } from '@mensa/domain';
-import { basketCount, basketLines, keepAwakeWanted, qrSide } from './till-rules';
+import {
+  basketCount,
+  basketLines,
+  checkRefundAmount,
+  keepAwakeWanted,
+  qrSide,
+  refundInputText,
+} from './till-rules';
 
 const PASTA: MenuItem = {
   id: 'itm_pasta',
@@ -46,5 +53,35 @@ describe('basket summary', () => {
       { itemId: 'itm_unknown', name: 'itm_unknown', quantity: 1 },
     ]);
     assert.ok(MAX_LINE_QUANTITY >= 2);
+  });
+});
+
+describe('checkRefundAmount', () => {
+  it('accepts euros with a comma or a point up to the server refundable amount', () => {
+    assert.deepEqual(checkRefundAmount('2,50', 440), { ok: true, cents: 250 });
+    assert.deepEqual(checkRefundAmount('4.40', 440), { ok: true, cents: 440 });
+  });
+
+  it('never allows more than the server says can still be refunded', () => {
+    assert.deepEqual(checkRefundAmount('4,41', 440), {
+      ok: false,
+      error: { key: 'tooMuch', refundableCents: 440 },
+    });
+  });
+
+  it('says nothing while empty and names every other problem', () => {
+    assert.deepEqual(checkRefundAmount('', 440), { ok: false, error: null });
+    assert.deepEqual(checkRefundAmount('1,234', 440), { ok: false, error: { key: 'too_precise' } });
+    assert.deepEqual(checkRefundAmount('0,00', 440), { ok: false, error: { key: 'zero' } });
+    assert.deepEqual(checkRefundAmount('2,5x', 440), { ok: false, error: { key: 'invalid' } });
+  });
+
+  it('writes the remaining amount the way the field reads it back', () => {
+    assert.equal(refundInputText(440, 'de'), '4,40');
+    assert.equal(refundInputText(1005, 'en'), '10.05');
+    assert.deepEqual(checkRefundAmount(refundInputText(1005, 'de'), 1005), {
+      ok: true,
+      cents: 1005,
+    });
   });
 });
