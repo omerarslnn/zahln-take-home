@@ -859,11 +859,29 @@ Checksums (SHA-256): student build 5
 `f538ad32a538cfa3e96c0b0910775750d204b58884f46b8a23392c8264d86e4b`, till build 4
 `4a97e78aa350286446dca23afc63d9f5f7c542c9189065bf538ed5ef0c231192`.
 
+### Physical-device results (Pixel XL, Android 10, student build 5, 2026-11-05)
+
+Run by the owner: eight smoke checks, all passed. Build 5 was installed over build 4.
+
+| #   | Check                                                   | Manual test    | Result                                                                                  |
+| --- | ------------------------------------------------------- | -------------- | --------------------------------------------------------------------------------------- |
+| 1   | Demo Student sign-in                                    | L8 (partly)    | passed: the Student row only; Staff, Guest and the double tap were not part of this run |
+| 2   | Incorrect password shows the right error                | L2             | passed                                                                                  |
+| 3   | `cashier-campus-1` rejected by the student app          | L4             | passed                                                                                  |
+| 4   | Typed username and password sign-in                     | L3             | passed                                                                                  |
+| 5   | Diagnostics → Language → Deutsch                        | G6 (partly)    | passed: the override switches to German                                                 |
+| 6   | "Device language" restores the system language          | G6 (partly)    | passed; the force stop and relaunch step of G6 was not part of this run                 |
+| 7   | Payment history keeps earlier payments after the update | (install step) | passed: installing build 5 over build 4 kept the account's history                      |
+| 8   | Offline sign-in shows the connectivity error            | L5             | passed                                                                                  |
+
+**Still not run**: L1, L6, L7, L9–L13, G1–G5, G7 (G4 does not apply to Android 10), the till
+(build 4, iPad), the iPhone, TalkBack and VoiceOver (A1–A4), and the largest font sizes (S12, L13).
+
 ### Remaining
 
-- Physical checks: L1–L13 and G1–G7 ([manual-tests.md](manual-tests.md)), and the earlier A1–A4 and
-  S12. The iPhone and iPad development builds need `expo run:ios --device` again to declare both
-  languages (per-app language in iOS Settings).
+- Physical checks: the rows above that were not run, and the earlier A1–A4 and S12. The iPhone and
+  iPad development builds need `expo run:ios --device` again to declare both languages (per-app
+  language in iOS Settings).
 - German screenshots and the emulator run of the release builds (live language change), not run
   for the reason above.
 
