@@ -48,9 +48,16 @@ export function ListRow(props: {
         >
           {props.title}
         </Text>
-        {props.status ? <StatusPill tone={props.status.tone} label={props.status.label} /> : null}
-        {props.subtitle ? (
-          <Text className="text-caption text-ink-muted">{props.subtitle}</Text>
+        {props.status || props.subtitle ? (
+          // Status and subtitle share a line while they fit, and wrap at large text sizes.
+          <View className="flex-row flex-wrap items-center gap-x-2 gap-y-1">
+            {props.status ? (
+              <StatusPill tone={props.status.tone} label={props.status.label} />
+            ) : null}
+            {props.subtitle ? (
+              <Text className="shrink text-caption text-ink-muted">{props.subtitle}</Text>
+            ) : null}
+          </View>
         ) : null}
       </View>
       {props.value ? (

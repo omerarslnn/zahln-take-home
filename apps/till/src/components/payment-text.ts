@@ -9,7 +9,7 @@ import type {
   RefundStatus,
 } from '@mensa/api';
 import type { MessageKey } from '@mensa/shared';
-import type { Tone } from './ui';
+import type { IconName, Tone } from './ui';
 
 export function paymentStatusText(status: PaymentStatus): { tone: Tone; key: MessageKey } {
   switch (status) {
@@ -52,4 +52,25 @@ export function priceGroupKey(group: PriceGroup): MessageKey {
 
 export function historyEventKey(type: PaymentEvent['type']): MessageKey {
   return `event.${type}`;
+}
+
+/**
+ * A server history event's tone and icon, for a timeline. The words stay `historyEventKey`'s; the
+ * icon only repeats them. A requested refund is still being processed, so it is "pending", not done.
+ */
+export function historyEventVisual(type: PaymentEvent['type']): { tone: Tone; icon: IconName } {
+  switch (type) {
+    case 'payment_created':
+      return { tone: 'neutral', icon: 'ellipse-outline' };
+    case 'payment_confirmed':
+      return { tone: 'ok', icon: 'checkmark-circle' };
+    case 'payment_declined':
+      return { tone: 'error', icon: 'close-circle' };
+    case 'refund_requested':
+      return { tone: 'pending', icon: 'return-down-back' };
+    case 'refund_completed':
+      return { tone: 'ok', icon: 'checkmark-circle' };
+    case 'refund_failed':
+      return { tone: 'error', icon: 'close-circle' };
+  }
 }

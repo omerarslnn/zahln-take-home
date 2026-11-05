@@ -3,6 +3,7 @@
 export {
   berlinDateKey,
   FINANCE_TIME_ZONE,
+  formatBerlinClock,
   formatBerlinDateTime,
   formatBerlinTime,
 } from './format/datetime';

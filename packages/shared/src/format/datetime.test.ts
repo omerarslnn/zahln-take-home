@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { berlinDateKey, formatBerlinDateTime, formatBerlinTime } from './datetime';
+import {
+  berlinDateKey,
+  formatBerlinClock,
+  formatBerlinDateTime,
+  formatBerlinTime,
+} from './datetime';
 
 describe('berlinDateKey', () => {
   it('uses the Berlin day, not the UTC day, near midnight', () => {
@@ -25,5 +30,12 @@ describe('formatBerlinTime', () => {
   it('shows Berlin time of day with seconds, on a 24-hour clock in both languages', () => {
     assert.equal(formatBerlinTime('2026-11-01T14:31:05Z', 'de'), '15:31:05');
     assert.equal(formatBerlinTime('2026-07-15T22:00:09Z', 'en'), '00:00:09');
+  });
+});
+
+describe('formatBerlinClock', () => {
+  it('shows Berlin hours and minutes on a 24-hour clock in both languages', () => {
+    assert.equal(formatBerlinClock('2026-11-04T16:03:40Z', 'de'), '17:03');
+    assert.equal(formatBerlinClock('2026-07-15T22:05:00Z', 'en'), '00:05');
   });
 });

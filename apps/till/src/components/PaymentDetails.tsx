@@ -1,6 +1,6 @@
 // A payment's details as the server reports them: place, items, price group, amount, status,
-// refunds and the full history. The student app has an identical copy. Times are Berlin time, the
-// zone the Studierendenwerk reports in, and labelled as such.
+// refunds and the full history. Till only since Phase 4 (the student app has its own detail view).
+// Times are Berlin time, the zone the Studierendenwerk reports in, and labelled as such.
 import type { Payment, PaymentDetail } from '@mensa/api';
 import { formatBerlinDateTime, formatCents } from '@mensa/shared';
 import { useI18n } from '@mensa/shared/react';

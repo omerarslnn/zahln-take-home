@@ -2,6 +2,7 @@
 // sample data, so every state can be reviewed and photographed without a real order or payment.
 // Registered only when __DEV__ (like the design catalogue), so release bundles contain none of it.
 // The sample data is invented on purpose and never sent anywhere; the screens' rules are not used.
+import type { Payment, PaymentDetail } from '@mensa/api';
 import type { GateState, Order, PaymentDisplay, PayOrderIntent } from '@mensa/domain';
 import { formatCents } from '@mensa/shared';
 import { useI18n } from '@mensa/shared/react';
@@ -9,6 +10,9 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Caption, Card, ListRow, Screen } from '../components/ui';
 import type { RootStackParamList } from '../navigation';
 import { describeOutcome } from '../payment-outcome';
+import { historySections } from '../history-sections';
+import { HistoryView } from './HistoryScreen';
+import { PaymentDetailView } from './PaymentDetailScreen';
 import { ResultView } from './ResultScreen';
 import { ReviewLoading, ReviewView, type ReviewViewProps } from './ReviewScreen';
 
@@ -132,7 +136,159 @@ const PREVIEWS: Record<string, Preview> = {
     render: () => <ReviewLoading failure="offline" onRetry={noop} onBack={noop} />,
   },
   ...resultPreviews(),
+  ...historyPreviews(),
 };
+
+function samplePayment(id: string, createdAt: string, extra: Partial<Payment> = {}): Payment {
+  return {
+    id,
+    orderId: `ord_${id}`,
+    status: 'confirmed',
+    amountCents: 780,
+    currency: 'EUR',
+    priceGroup: 'student',
+    mensa: { id: 'mns_preview', name: 'Mensa am Campus' },
+    till: { id: 'till_preview', name: 'Kasse 1' },
+    payer: { id: 'usr_preview', displayName: 'Test Student' },
+    items: ORDER.items.map((item) => ({ ...item, unitPriceCents: item.unitPriceCents ?? 0 })),
+    refundedAmountCents: 0,
+    pendingRefundAmountCents: 0,
+    refundableAmountCents: 780,
+    needsAttention: false,
+    attentionReasons: [],
+    createdAt,
+    updatedAt: createdAt,
+    version: 2,
+    ...extra,
+  };
+}
+
+function historyPreviews(): Record<string, Preview> {
+  const today = '2026-11-05';
+  const payments = [
+    samplePayment('pay_a', '2026-11-05T11:02:10Z'),
+    samplePayment('pay_b', '2026-11-04T16:03:00Z', {
+      status: 'declined',
+      refundableAmountCents: 0,
+    }),
+    samplePayment('pay_c', '2026-11-04T10:52:00Z', {
+      refundedAmountCents: 100,
+      pendingRefundAmountCents: 50,
+      refundableAmountCents: 630,
+    }),
+    samplePayment('pay_d', '2026-10-30T12:10:00Z', { status: 'pending' }),
+  ];
+  const unknown = {
+    ...sampleIntent('checking', 'unavailable'),
+    lastSentAt: Date.parse('2026-11-05T11:20:00Z'),
+  };
+  const rows = [
+    { kind: 'unresolved' as const, intent: unknown },
+    ...payments.map((payment) => ({ kind: 'payment' as const, payment })),
+  ];
+  const list = {
+    loading: false,
+    hasMore: true,
+    hasRows: true,
+    failure: null,
+    placeOf: () => 'Mensa am Campus',
+    onRefresh: noop,
+    onRetry: noop,
+    onLoadMore: noop,
+    onOpenPayment: noop,
+    onOpenResult: noop,
+    onScan: noop,
+  };
+  const refunded = payments[2] as Payment;
+  const detail: PaymentDetail = {
+    ...refunded,
+    refunds: [
+      {
+        id: 'ref_1',
+        paymentId: refunded.id,
+        amountCents: 100,
+        currency: 'EUR',
+        status: 'completed',
+        reason: null,
+        createdAt: '2026-11-04T11:59:00Z',
+        updatedAt: '2026-11-04T11:59:30Z',
+      },
+      {
+        id: 'ref_2',
+        paymentId: refunded.id,
+        amountCents: 50,
+        currency: 'EUR',
+        status: 'pending',
+        reason: 'Coffee was cold',
+        createdAt: '2026-11-04T12:20:00Z',
+        updatedAt: '2026-11-04T12:20:00Z',
+      },
+    ],
+    history: [
+      { at: '2026-11-04T10:52:00Z', type: 'payment_created', amountCents: 780, refundId: null },
+      { at: '2026-11-04T10:52:04Z', type: 'payment_confirmed', amountCents: 780, refundId: null },
+      { at: '2026-11-04T11:59:00Z', type: 'refund_requested', amountCents: 100, refundId: 'ref_1' },
+      { at: '2026-11-04T11:59:30Z', type: 'refund_completed', amountCents: 100, refundId: 'ref_1' },
+      { at: '2026-11-04T12:20:00Z', type: 'refund_requested', amountCents: 50, refundId: 'ref_2' },
+    ],
+  };
+  const detailBase = { loading: false, failure: null, onReload: noop };
+  return {
+    'history-list': {
+      title: 'History: unfinished first, by day',
+      render: () => <HistoryView {...list} sections={historySections(rows, today)} />,
+    },
+    'history-offline': {
+      title: 'History: offline, earlier rows kept',
+      render: () => (
+        <HistoryView {...list} failure="offline" sections={historySections(rows.slice(1), today)} />
+      ),
+    },
+    'history-loading': {
+      title: 'History: first load',
+      render: () => <HistoryView {...list} loading hasRows={false} hasMore={false} sections={[]} />,
+    },
+    'history-empty': {
+      title: 'History: no payments yet',
+      render: () => <HistoryView {...list} hasRows={false} hasMore={false} sections={[]} />,
+    },
+    'detail-refunds': {
+      title: 'Detail: refunded, one refund pending',
+      render: () => <PaymentDetailView {...detailBase} payment={refunded} detail={detail} />,
+    },
+    'detail-pending': {
+      title: 'Detail: payment being checked',
+      render: () => (
+        <PaymentDetailView
+          {...detailBase}
+          payment={payments[3] as Payment}
+          detail={{
+            ...(payments[3] as Payment),
+            refunds: [],
+            history: [
+              {
+                at: '2026-10-30T12:10:00Z',
+                type: 'payment_created',
+                amountCents: 780,
+                refundId: null,
+              },
+            ],
+          }}
+        />
+      ),
+    },
+    'detail-offline': {
+      title: 'Detail: offline, earlier copy kept',
+      render: () => (
+        <PaymentDetailView {...detailBase} failure="offline" payment={refunded} detail={detail} />
+      ),
+    },
+    'detail-loading': {
+      title: 'Detail: loading',
+      render: () => <PaymentDetailView {...detailBase} loading payment={null} detail={null} />,
+    },
+  };
+}
 
 function resultPreviews(): Record<string, Preview> {
   const base = {
