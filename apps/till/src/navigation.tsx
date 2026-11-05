@@ -31,7 +31,8 @@ export function TillNavigator() {
           <Stack.Screen
             name="Checkout"
             component={CheckoutScreen}
-            options={{ title: t('till.nav.checkout') }}
+            // The checkout shows the till's own header (mensa, till, actions) to save height.
+            options={{ title: t('till.nav.checkout'), headerShown: false }}
           />
           <Stack.Screen
             name="Payments"

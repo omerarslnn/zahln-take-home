@@ -304,7 +304,10 @@ export const en = {
   'till.failure.unassigned': 'This account has no mensa assigned.',
   'checkout.menu': 'Menu',
   'checkout.basket': 'Order',
-  'checkout.basketEmpty': 'Add items from the menu.',
+  'checkout.basketEmpty': 'Tap + on a dish to add it.',
+  'checkout.basketEmptyTitle': 'No items yet',
+  'checkout.count': 'Items: {count}',
+  'checkout.menuLoading': 'Loading the menu…',
   'checkout.priceNote':
     'The price depends on who pays: the QR code carries the order, and the payer sees their own price.',
   'checkout.create': 'Create order and show QR code',
@@ -952,7 +955,10 @@ export const de: Record<MessageKey, string> = {
   'till.failure.unassigned': 'Diesem Konto ist keine Mensa zugeordnet.',
   'checkout.menu': 'Speisekarte',
   'checkout.basket': 'Bestellung',
-  'checkout.basketEmpty': 'Füge Positionen aus der Speisekarte hinzu.',
+  'checkout.basketEmpty': 'Tippe bei einem Gericht auf +, um es hinzuzufügen.',
+  'checkout.basketEmptyTitle': 'Noch keine Positionen',
+  'checkout.count': 'Positionen: {count}',
+  'checkout.menuLoading': 'Speisekarte wird geladen …',
   'checkout.priceNote':
     'Der Preis hängt davon ab, wer bezahlt: Der QR-Code enthält die Bestellung, und die zahlende Person sieht ihren eigenen Preis.',
   'checkout.create': 'Bestellung anlegen und QR-Code zeigen',
