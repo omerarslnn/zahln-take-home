@@ -96,18 +96,19 @@ live in `styles.ts` and `a11y-text.ts` and are unit-tested in Node.
 
 | Primitive                                                                     | Responsibility                                                                                                                                                                   |
 | ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Screen`                                                                      | Scrolling body on the canvas, gutters, safe area, keyboard; `footer` goes into a `BottomActionBar`                                                                               |
+| `Screen`                                                                      | Scrolling body on the canvas, gutters, safe area, keyboard; `footer` goes into a `BottomActionBar`; `headerless` keeps the status-bar area opaque on a screen without a nav bar  |
 | `BottomActionBar`                                                             | Persistent actions: above the home indicator, directly on the keyboard while it is open                                                                                          |
 | `Title`, `Heading`, `Body`, `Caption`                                         | The type scale; `Title` and `Heading` are announced as headers                                                                                                                   |
 | `Button`                                                                      | `primary` / `secondary` / `tertiary` / `danger`; disabled is grey for every tone; `busy` shows a spinner over the label, which keeps its place, so the button never changes size |
 | `IconButton`                                                                  | 48 × 48 dp, icon only, a required spoken `label`                                                                                                                                 |
 | `Card`, `Section`                                                             | A white surface with a hairline and an optional heading; a titled group without a surface                                                                                        |
 | `LabelledValue`                                                               | "Label: value", read as one phrase                                                                                                                                               |
-| `ListRow`                                                                     | Title, status, subtitle, trailing value, chevron when it opens something; read as one phrase                                                                                     |
+| `ListRow`                                                                     | Title, status, subtitle, trailing value, chevron when it opens something; optional leading `icon`, `busy` (spinner for the chevron) and `disabled`; read as one phrase           |
 | `StatusPill`                                                                  | A tone's icon and words on its tint                                                                                                                                              |
 | `Notice`                                                                      | A banner: icon, title, description as one accessible group; `actions` outside it                                                                                                 |
 | `AmountText`                                                                  | Server cents in the current language's format, tabular figures; it never calculates                                                                                              |
-| `TextField`                                                                   | Visible label, hint, error (icon + text), secure entry and every keyboard prop; one stop for screen readers                                                                      |
+| `TextField`                                                                   | Visible label, hint, error (icon + text), every keyboard prop and an optional `trailing` control inside the border; one stop for screen readers (the control is its own stop)    |
+| `PasswordField`                                                               | A `TextField` hidden by default, marked as the current password for autofill, with a show/hide `IconButton` labelled by what it does next                                        |
 | `EmptyState`                                                                  | Icon, words and an optional action for "nothing here"                                                                                                                            |
 | `LoadingIndicator`, `Skeleton`                                                | Spinner with words, read once; placeholders hidden from screen readers that pulse unless reduced motion is on                                                                    |
 | `Icon`                                                                        | Ionicons, decorative only, scaling with text up to 1.5×                                                                                                                          |
@@ -152,7 +153,11 @@ English on purpose: it is a review tool, not a product screen.
 - **Focus**: `useAccessibilityFocus` moves focus to a new heading after layout; actions follow their
   text in reading order.
 - **Large text**: everything wraps; icons grow with the text up to 1.5×. Checked on the Android
-  emulator at 130 % (the Pixel XL's largest) and 200 %.
+  emulator at 130 % (the Pixel XL's largest) and 200 % (the sign-in screens at 200 % in Phase 3).
+- **Fields keep focus while a form is sent.** A field that becomes non-editable loses focus, and
+  Android moves keyboard focus to the next control (seen in Phase 3: after a failed sign-in, focus
+  sat on "Show password"). Fields stay editable while a request runs; the button shows the busy
+  state and a second submit sends nothing.
 - **Colour is never alone**: every status has words and an icon.
 
 ## Motion
@@ -176,6 +181,41 @@ platform's reduced-motion setting.
 | Rejected: a shared native UI package             | See below.                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | Possible later: a subset icon font               | The app uses about 15 of 1,300 glyphs; a subset font would save most of the 390 kB, at the cost of a generated asset to maintain.                                                                                                                                                                                                                                                                                                   |
 
+## Sign-in screens (Phase 3)
+
+Both apps' sign-in screens are built only from these primitives, plus two shared building blocks in
+`components/SignIn.tsx` (identical in both apps): `BrandHeader` (the app's mark, its name as the
+screen's heading and one line about it) and `SignInForm` with its state hook `useSignIn`.
+
+- **No navigation bar** (`Screen headerless`): the brand header is the screen's title.
+- **Form**: username (`autoComplete="username"`, `textContentType="username"`, no capitalisation or
+  correction, return key "next") and a `PasswordField` (return key "go" submits). Empty fields are
+  reported at the fields on submit, without a request; the error is part of each field's spoken
+  label and is announced once. One failure notice above the fields, with a distinct message for
+  refused credentials, no connection, a server that does not answer, a wrong role, a missing demo
+  password and missing settings. After refused credentials or a wrong role the password is cleared
+  and the username kept.
+- **Demo accounts** are `ListRow`s in a card: one tap signs in; the row being signed in shows a
+  spinner and the others are disabled until it finishes. The student app lists Student, Staff and
+  Guest with an icon and one line each; the till lists the cashiers grouped by the mensa the API
+  description names for them.
+- **Till layout**: at 768 dp and wider two columns (brand and form left, demo cashiers right), each
+  column one screen-reader group; narrower, one column.
+- **Diagnostics** is a tertiary button at the end, so it never competes with signing in.
+- **Honest scope**: a footnote says that this demo has no registration. There is no sign-up, no
+  password reset and no price-group choice (the server decides the price group).
+
+Screenshots: Android emulator, phone (EN, 200 % text) and tablet width; see
+[progress.md](progress.md), Phase 3.
+
+## Language
+
+The apps follow the device's language preference (on Android 13+ and iOS also the app's own
+language setting): German when it prefers German, otherwise English. Normal screens have no
+language switch. Diagnostics has a session-only override ("Device language (…)", "Deutsch",
+"English"; each language named in itself), kept in memory and gone after a relaunch. Implementation
+and platform behaviour: [architecture.md](architecture.md#internationalisation).
+
 ## Two apps, one set of primitives
 
 The student app and the till keep identical copies of the primitives (`components/ui/`), the
@@ -196,9 +236,13 @@ The tests live with the student copy only.
 4. Lists are `ListRow`s inside a `Card`, `separated` after the first row.
 5. Statuses are `StatusPill`s (or `toneIcon` inline) with the server's status in words.
 6. Problems and notes are `Notice`s with `actions`, never buttons inside the text.
-7. Inputs are `TextField`s; validate on submit and announce the result with `useAnnouncement`.
+7. Inputs are `TextField`s (`PasswordField` for a password); validate on submit and announce the
+   result with `useAnnouncement`. Set the native input props: `autoComplete`, `textContentType`,
+   `returnKeyType` and `onSubmitEditing` to move to the next field or submit.
 8. Use tokens through classes or `@mensa/shared`; no hex values, no `text-xs`/`text-2xl` sizes and
    no `border-line` for decorative dividers (use `line-subtle`).
+9. Every string goes through `t()` with an English and a German entry; screens never offer a
+   language switch (the app follows the device; see _Language_).
 
 **Not migrated yet** (screen redesign phases): the screens still use raw Tailwind classes for their
 titles and some rows (`text-2xl` headers, `border-line` dividers in the till's menu and the home

@@ -217,17 +217,38 @@ restart. Refunds carry no version; a finished refund never moves back to `pendin
 
 `SessionCoordinator` holds the bearer token in memory only (never persisted, never logged):
 
-- on `401 session_expired` it logs the **same seeded account** in again (bounded: two attempts) and
+- **the role is checked before the session is published** (Phase 3): each app passes the roles it
+  serves (`acceptsUser: acceptsRoles(PAYER_ROLES)` in the student app, `CASHIER_ROLES` in the till,
+  `finance` on the dashboard). For any other account `signIn` answers `wrong_role`, `user()` stays
+  null and no listener is called, so no screen, navigator or payment controller ever sees it, not
+  even for one render; the token it received is dropped;
+- on `401 session_expired` it logs the **same account** in again (bounded: two attempts) and
   repeats the call once with the same closure, so the same key and payload. Concurrent expiries
   share one re-login;
-- the re-login must return the same server user ID, or nothing continues (`account_mismatch`);
+- the re-login must return the same server user ID and an accepted role, or nothing continues
+  (`account_mismatch`);
+- a login with no answer at all (`no_response`, network) is `no_connection`; a server that answered
+  without a session (503, 502, 504, a timeout or a broken body) is `login_unavailable`; a refusal is
+  `invalid_credentials`. The sign-in screens show each differently; calls see `no_connection` as
+  `login_unavailable`, so the payment code's reasons did not change;
 - every sign-in and sign-out starts a new generation. A request or re-login from an earlier
   generation reports `account_changed`, its result is discarded, and the previous user's controller
   is disposed, so a late response can never update or show another user's state. The discarded
   attempt stays saved as "maybe sent" in its owner's partition and is read when that user returns.
 
-Keeping the password in memory to log in again is specific to the seeded mock accounts: the API has
-no refresh token. It is not a production authentication design.
+**Mock-only credential retention.** The API has no refresh token, so the coordinator keeps the
+signed-in account's credentials (typed or a demo account's) in memory to log in again. They are
+never persisted or logged, and they are dropped on sign-out, on the next sign-in, when a sign-in
+fails or is rejected for its role, and when a re-login is refused or answers for someone else
+(`holdsCredentials()` lets the tests check this). It is not a production authentication design: a
+real app would hold a refresh token or a device-bound credential, never the password.
+
+`SignInFlow` (`packages/domain/src/sign-in.ts`) is the one way an app signs in. `submit(username,
+password)` checks the fields first (both required; the username trimmed, the password exactly as
+typed) and sends nothing while one is empty; `signInDemo(username)` uses the published demo
+password. Both call the same `SessionCoordinator.signIn`, so typed and demo sign-ins share the role
+check, the generations and the re-login. One attempt at a time: a second submit or tap while one runs
+answers `in_progress` and sends nothing.
 
 ### Server time
 
@@ -313,8 +334,10 @@ keeps the history.
 `apps/*/src/payments/PaymentServices.tsx` creates one `PaymentGate`, `GateRecovery`,
 `SessionCoordinator` and SecureStore-backed store per app process, and one `IntentController` plus
 one `ScopedApi` (the authenticated reads) per signed-in user, keyed by user ID and role so a 5-minute
-re-login keeps the controller. It signs a seeded account in by username; the password stays in that
-module. An `AppState` listener tells `GateRecovery` about the foreground, forgets the server-time
+re-login keeps the controller. Each app passes the roles it serves (`roles`), which the coordinator
+checks before publishing a session, so a controller is only ever built for an accepted account. It
+offers `signIn(username, password)` and `signInDemo(username)` through one `SignInFlow`; the
+published demo password stays in that module. An `AppState` listener tells `GateRecovery` about the foreground, forgets the server-time
 estimate and pauses or resumes polling; the effect's cleanup removes it and disposes the recovery. If the user's records cannot be read, no controller is offered (`recordsUnavailable`) and
 new payments stay blocked. Keys come from `expo-crypto`'s `randomUUID`. Screens re-render through
 `useControllerRevision`, whose snapshot is the controller's change counter: `controller.list()`
@@ -447,10 +470,34 @@ The dashboard keeps `<html lang>` in sync with the chosen language.
 ## Internationalisation
 
 English is the reference catalogue (`packages/shared/src/i18n/messages.ts`). The German catalogue
-is typed as `Record<MessageKey, string>`, so a missing key fails the typecheck. The initial language
-comes from `expo-localization` on native and `navigator.language` on the web. `Intl`'s default
-locale was not reliable for this: in Expo Go on the iOS simulator it stayed English with the device
-set to German. The user can switch at any time; the choice is not persisted yet.
+is typed as `Record<MessageKey, string>`, so a missing key fails the typecheck.
+
+**Native apps (Phase 3): the device's language.** `systemLocale(tags)` (`@mensa/shared`) takes the
+language preferences from `expo-localization`'s `getLocales()`, most preferred first, and picks the
+first supported one by its primary subtag (any `de-*` is German), English when none is: with Turkish
+then German preferred, both platforms pick an app's German resources, and so does the app.
+`apps/*/src/language.tsx` (identical copies) reads it with `useSyncExternalStore`:
+
+| When                      | Android                                                                                                                                                                                   | iOS                                                                                                          |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Start-up                  | System language list, or the app's own language (Android 13+, Settings → Apps → Language)                                                                                                 | `Locale.preferredLanguages`: the app's own language (Settings → the app → Language) first, else the system's |
+| Change while the app runs | Live: the activity is not recreated (`allowDynamicLocaleChangesAndroid` adds `locale` to `configChanges`), expo-localization reports the configuration change and `useLocales` re-renders | iOS ends the app when the system or the app's language changes; the next launch reads the new one            |
+| Return to the foreground  | Read again (in case an event was missed)                                                                                                                                                  | Read again                                                                                                   |
+
+`expo-localization`'s config plugin also declares the app's languages (`supportedLocales: en, de`):
+`CFBundleLocalizations` on iOS, which offers the per-app language setting, and a `locales_config.xml`
+on Android, which lists the app under the per-app languages of Android 13+ (and keeps only English and
+German resources of libraries). These are native settings: they apply to new builds (student 5, till
+4), not to Expo Go.
+
+Diagnostics has a session-only override (`LanguageSetting`): "Device language (…)", "Deutsch",
+"English". It lives in React state at the app root, so it survives sign-out and is gone after a
+relaunch; nothing is persisted. The provider is above `PaymentServicesProvider` and passes the
+language down through context only, so a change re-renders the texts and never remounts the
+session, the controllers or a running payment. `I18nProvider` takes either `initialLocale` (it
+keeps the language itself, as the dashboard does) or `locale` with `onLocaleChange` (the native apps).
+
+**Dashboard:** `navigator.language` at start, and its compact DE/EN switch (unchanged).
 
 ## Native projects
 

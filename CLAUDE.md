@@ -32,8 +32,10 @@ and refund flows passed on a Pixel XL, an iPad A16 and an iPhone 17 Pro on 2026-
 readers, maximum font sizes and some recovery cases are still to run (`docs/progress.md`, Phase 0).
 Phase 0 (baseline) and Phase 1 (BUG-01: payment availability re-checked in the foreground, one live
 warning; student build 4) are done; N9 passed on the Pixel XL. Phase 2 (design system: tokens,
-native primitives, `docs/design-system.md`) is done and awaits the owner's review before Phase 3;
-screen redesigns, sign-in and localization changes come later.
+native primitives, `docs/design-system.md`) is approved. Phase 3 (typed and demo sign-in, roles
+checked before a session is published, the apps following the device language; student build 5,
+till build 4) is done and awaits the owner's review and device checks (L1–L13, G1–G7); the Student
+and Till main-screen redesigns come later and are not started.
 
 Live writes go only through intents (the apps, `pnpm api:order-probe`, `pnpm api:payment-probe`) and
 only when the current stage authorizes them; record each one in the ledger in `docs/api-notes.md`.
@@ -119,7 +121,7 @@ dashboard; 12 is implemented as a device gate.
 - App version: `expo.version` in `apps/*/app.json` (1.0.0, the server's `minAppVersion`), read at
   runtime as `appVersion` in `apps/*/src/api.ts` and sent as `X-App-Version`. Bump it there; generated
   native projects pick it up on the next `expo prebuild --clean`. Raise `android.versionCode` and
-  `ios.buildNumber` (now student 4, till 3) for each build handed to a device.
+  `ios.buildNumber` (now student 5, till 4) for each build handed to a device.
 - Payment availability: `GateRecovery` (`@mensa/domain`) decides when `GET /config` is read again
   (start-up, foreground, connection back, a few spaced retries after a failed read, the user's
   "check again"); only the server's answer opens the gate, and only its newest read counts. The
@@ -146,6 +148,13 @@ dashboard; 12 is implemented as a device gate.
   Nothing interactive goes inside an `accessible` group (VoiceOver cannot reach it): `Notice` takes
   strings and `actions`, never children. Icons are Ionicons through `Icon`, always decorative. The
   design catalogue (Diagnostics → Design system) exists only under `__DEV__`.
+- Sign-in: every sign-in goes through `SignInFlow` (typed or demo) and `SessionCoordinator.signIn`;
+  each app passes its roles (`PaymentServicesProvider roles`, `acceptsUser`), checked before the
+  session is published. No sign-up or password reset (the API has none). Credentials stay in memory
+  for the re-login only and are dropped on sign-out and refused sign-ins; never persist or log them.
+- Language: the native apps follow the device language (`src/language.tsx`, German otherwise
+  English). No language switch on normal screens; Diagnostics has a session-only override, never
+  persisted. Every new string needs English and German. The dashboard keeps its own switch.
 - Screen-reader announcements go through `useAnnouncement` only (both platforms, focused screen
   only, once per change); never also an Android live region for the same message.
 - The dashboard keeps nothing in localStorage or cookies, and uses hash routes (`#/…`).

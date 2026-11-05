@@ -139,7 +139,7 @@ an independent traversal.
 | Metro dev server (8081/8082)                                    | A live-reloading asset server feeding the JS VM; release builds embed Hermes bytecode instead            |
 | `@react-navigation/native-stack`                                | `UINavigationController` / a Fragment back stack (real native transitions)                               |
 | NativeWind `className="bg-brand"`                               | Style resources; compiled to React Native style objects at build time                                    |
-| `messages.ts` + `I18nProvider`                                  | `strings.xml` / `Localizable.strings` with an in-app language override                                   |
+| `messages.ts` + `I18nProvider` + `language.tsx`                 | `strings.xml` / `Localizable.strings` resolved from the device language, plus a debug-menu override      |
 | `TransportResult`, `StartOutcome`, `AttemptOutcome` unions      | Kotlin `sealed class` / Swift `enum` with associated values                                              |
 | `packages/domain`                                               | A pure Kotlin/Swift module with no Android/UIKit imports                                                 |
 | `IntentController` + `IntentStore`                              | A repository that writes an outbox row (Room/Core Data) before the network call, but never auto-retries  |
@@ -245,8 +245,9 @@ Replace `packages/api/openapi/openapi.json` deliberately (keep `brief/` untouche
 **Share a React Native component between student and till**
 
 Today the two apps keep identical copies of the design-system primitives (`src/components/ui/`),
-`Foundation.tsx`, `ConnectionCheck.tsx`, `SecureStorageCheck.tsx` and everything in `src/payments/`
-except the student-only `connectivity.ts`; `pnpm check:copies` proves they match (the list is in
+the sign-in form (`SignIn.tsx`, `sign-in-text.ts`), the language provider and its Diagnostics
+setting (`language.tsx`, `LanguageSetting.tsx`), `ConnectionCheck.tsx`, `SecureStorageCheck.tsx` and
+everything in `src/payments/` except the student-only `connectivity.ts`; `pnpm check:copies` proves they match (the list is in
 `scripts/check-native-copies.mjs`). Why copies and not a package: [design-system.md](design-system.md).
 To share them anyway, create
 `packages/native-ui` with `react-native`, `react`, `nativewind` and `react-native-css-interop` as
@@ -274,9 +275,20 @@ different peer set, crashes at runtime. Do not import it from the dashboard.
 - _Why does the till not show the payment gate?_ The API checks the payer app's version, not the till's.
 - _Why is order expiry accepted at an equal version?_ Observed live: expiry does not grow `version`
   (`docs/api-notes.md`, observation 7). Nothing else is accepted at an equal version.
-- _Is the password stored?_ No. The seeded account's password stays in memory for the 5-minute
-  re-login, a mock-specific mechanism; bearer tokens are memory-only too. Records hold IDs, amounts
+- _Is the password stored?_ No. The signed-in account's password (typed or a demo account's) stays
+  in memory for the 5-minute re-login, a mock-specific mechanism, and is dropped on sign-out and on
+  any refused or wrong-role sign-in; bearer tokens are memory-only too. Records hold IDs, amounts
   and states only.
+- _How is a cashier kept out of the student app?_ `SessionCoordinator` takes the app's roles
+  (`acceptsUser`) and checks them before it publishes the session, so `user()` stays null and no
+  listener runs: the navigator never shows Home and no payment controller is built
+  (`sign-in.test.ts`, "role check before the session is published").
+- _Why is there no sign-up?_ The API cannot create users. What a real registration needs is in
+  [design.md](design.md), section 4.
+- _How does the language follow the device?_ `language.tsx`: `getLocales()` through
+  `useSyncExternalStore`, re-read on Android's locale event and on every return to the foreground;
+  iOS restarts the app on a language change. A Diagnostics override lives in memory only
+  (architecture notes, "Internationalisation").
 - _Is there an offline queue?_ No. Writes happen only on a user action; polling only reads.
 - _Is the fingerprint check secure?_ It is a device-side gate. The mock server never sees proof of
   it; only the bearer token authorizes the payment. Production needs a server-verifiable approval

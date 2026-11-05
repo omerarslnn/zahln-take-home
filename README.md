@@ -13,20 +13,23 @@ dashboard) in one TypeScript monorepo, built against the supplied mock API.
 > payment and refund flows on a Pixel XL (Android 10), an iPad A16 and an iPhone 17 Pro (Face ID) on
 > 2026-11-04. **Not yet verified**: TalkBack and VoiceOver, maximum font sizes, a force-stop with a
 > genuinely unresolved payment, a real lost response on a device, and some dashboard manual checks.
-> **BUG-01 fixed** in Phase 1 (student build 4) and verified on the Pixel XL (N9, 2026-11-04). Design:
-> [docs/design.md](docs/design.md); visual design system: [docs/design-system.md](docs/design-system.md).
-> Records: [docs/progress.md](docs/progress.md).
+> **BUG-01 fixed** in Phase 1 (student build 4) and verified on the Pixel XL (N9, 2026-11-04).
+> **Phase 3** (student build 5, till build 4): sign-in with username and password beside one-tap demo
+> accounts, wrong-role accounts rejected before they appear, and the apps follow the device language;
+> its device checks (L1–L13, G1–G7) are not run yet. Design: [docs/design.md](docs/design.md); visual
+> design system: [docs/design-system.md](docs/design-system.md). Records:
+> [docs/progress.md](docs/progress.md).
 
 ## What exists today
 
-| Part                   | Implemented                                                                                                                                                                                                                                                                                                                     | Shell only / not yet                             |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| `apps/student` (Expo)  | Seeded sign-in, QR scan or typed code, review with the server's amount, local authorization (biometric or device PIN), truthful result with safe resend, paginated history with unresolved actions, payment detail with refunds and history, DE/EN, screen-reader labels                                                        | Screen-reader and maximum-font checks on devices |
-| `apps/till` (Expo)     | Seeded cashier sign-in, menu with per-group prices, basket, order with QR and countdown, follows paid/expired across restarts, payer's amount when paid, payment list and search, full and partial refunds, DE/EN, tablet layout                                                                                                | VoiceOver check on the iPad                      |
-| `apps/dashboard` (web) | Finance sign-in (public demo account), Berlin daily totals per mensa and till with "last fetched" and failed-refresh states, payments that need attention, filtered cursor-paged payments, payment detail with refunds and history, complete CSV export, DE/EN, diagnostics; deployed on Cloudflare Pages                       | Manual keyboard and screen-reader checks         |
-| `packages/api`         | Types generated from the contract, transport (timeouts, headers, Problem parsing, server `Date`, replay flag), typed client for all ten operations with runtime validation, live smoke check                                                                                                                                    | n/a                                              |
-| `packages/domain`      | Intents and their controller, write classification, session coordinator, server clock, payment gate, version reconciliation, bounded polling, QR and code parsing, authorization binding, scan lock, history paging, basket rules; `/finance`: read-only API with bounded retries, daily report store, cursor-chain export, CSV | n/a                                              |
-| `packages/shared`      | DE/EN catalogues, euro-cent and Europe/Berlin formatting, Berlin calendar-day ranges across clock changes, design tokens + Tailwind preset, React i18n bindings                                                                                                                                                                 | n/a                                              |
+| Part                   | Implemented                                                                                                                                                                                                                                                                                                                                                  | Shell only / not yet                             |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------ |
+| `apps/student` (Expo)  | Username and password sign-in or one-tap demo accounts (payers only), QR scan or typed code, review with the server's amount, local authorization (biometric or device PIN), truthful result with safe resend, paginated history with unresolved actions, payment detail with refunds and history, DE/EN following the device language, screen-reader labels | Screen-reader and maximum-font checks on devices |
+| `apps/till` (Expo)     | Cashier sign-in (typed or demo cashiers by mensa, cashiers only), menu with per-group prices, basket, order with QR and countdown, follows paid/expired across restarts, payer's amount when paid, payment list and search, full and partial refunds, DE/EN following the device language, tablet layout                                                     | VoiceOver check on the iPad                      |
+| `apps/dashboard` (web) | Finance sign-in (public demo account), Berlin daily totals per mensa and till with "last fetched" and failed-refresh states, payments that need attention, filtered cursor-paged payments, payment detail with refunds and history, complete CSV export, DE/EN, diagnostics; deployed on Cloudflare Pages                                                    | Manual keyboard and screen-reader checks         |
+| `packages/api`         | Types generated from the contract, transport (timeouts, headers, Problem parsing, server `Date`, replay flag), typed client for all ten operations with runtime validation, live smoke check                                                                                                                                                                 | n/a                                              |
+| `packages/domain`      | Intents and their controller, write classification, session coordinator, server clock, payment gate, version reconciliation, bounded polling, QR and code parsing, authorization binding, scan lock, history paging, basket rules; `/finance`: read-only API with bounded retries, daily report store, cursor-chain export, CSV                              | n/a                                              |
+| `packages/shared`      | DE/EN catalogues, euro-cent and Europe/Berlin formatting, Berlin calendar-day ranges across clock changes, design tokens + Tailwind preset, React i18n bindings                                                                                                                                                                                              | n/a                                              |
 
 ## Prerequisites
 
@@ -61,7 +64,10 @@ builds inline; `pnpm dashboard:build` stops with a message while it is missing.
 
 ### Test logins (public demo accounts of the mock API)
 
-All passwords are the API description's published `test1234`.
+All passwords are the API description's published `test1234`. In the apps, type a username and the
+password, or tap a demo account (which uses `EXPO_PUBLIC_SEEDED_PASSWORD`). The student app accepts
+only payer accounts and the till only cashiers; any other account is refused before it is shown.
+There is no registration or password reset: the API cannot create users.
 
 | Account                                                                   | Role    | Where                                                        |
 | ------------------------------------------------------------------------- | ------- | ------------------------------------------------------------ |
@@ -277,15 +283,20 @@ More: [docs/design.md](docs/design.md) · [docs/design-system.md](docs/design-sy
 - **Reports and exports have no version or snapshot.** "Last fetched" is when a copy arrived; an
   export reads every page of one cursor chain, so a payment that changes during the export appears
   in its newest seen state. It is not an atomic accounting extract.
-- **Mock sessions**: the apps and the dashboard keep the published test password in memory to sign
-  in again when the 5-minute token ends (no refresh token); expired tokens answer `401 unauthorized`
+- **Mock sessions**: the apps and the dashboard keep the signed-in account's password (typed or the
+  published demo password) in memory to sign in again when the 5-minute token ends (no refresh
+  token), and drop it on sign-out and on a refused or wrong-role sign-in; expired tokens answer `401 unauthorized`
   after about a minute, handled like `session_expired`. The dashboard keeps nothing in storage, so a
   reload asks to sign in again.
 - **Debug-signed APKs**: installable and updatable over earlier builds from this repository, not
   store builds.
 - Changing the display size makes Android recreate the app's screen; the app returns to sign-in,
-  and saved intents come back after signing in. Font size and language changes should do the same
-  (not tested).
+  and saved intents come back after signing in. Font size changes should do the same (not tested).
+  Language changes no longer recreate it (build 5 / 4 handle `locale` themselves; runtime check on a
+  device pending, G3). iOS restarts an app when its language changes.
+- **Language**: German when the device (or the app's own language setting) prefers German, otherwise
+  English; Diagnostics has a test override that lasts until the app is closed. The dashboard keeps
+  its own DE/EN switch.
 - No Android tablet: the till's two-column layout was checked on the phone emulator at a tablet-like
   width.
 - Plain `./gradlew`, Android Studio and `expo run:android` still get the JDK 11 pin from

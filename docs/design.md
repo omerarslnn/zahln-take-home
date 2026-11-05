@@ -88,9 +88,16 @@ money without a new build:
 
 ## 4. Device security and data protection
 
-- **Credentials.** Bearer tokens live in memory only. The mock has no refresh token, so the apps keep
-  the seeded test password in memory to log the same account in again: acceptable for public test
-  accounts, never for real ones (production: refresh tokens or a device-bound credential).
+- **Credentials.** Bearer tokens live in memory only. The mock has no refresh token, so the session
+  coordinator keeps the signed-in account's credentials (typed, or a demo account's) in memory to
+  log the same account in again, and drops them on sign-out, on a failed or wrong-role sign-in and
+  on a refused re-login. Mock-only: acceptable for public test accounts, never for real ones
+  (production: refresh tokens or a device-bound credential). Typed passwords are never persisted
+  or logged; the fields are marked for the platform's password managers.
+- **Roles.** Each app accepts only its own roles (payers in the student app, cashiers in the till,
+  finance on the dashboard), checked inside the session coordinator before the session is published.
+  The server still enforces every permission; the client check only keeps a wrong account from
+  appearing.
 - **Stored data.** Intent records in Expo SecureStore (Keychain / Keystore-backed) hold IDs, amounts,
   keys and states: no token, password or name. They are excluded from Android backups and scoped
   to candidate and user.
@@ -106,6 +113,24 @@ money without a new build:
   neutralised.
 - **Public by design**: the API origin, the candidate ID and the mock's demo password are inlined
   into client bundles and documented as public.
+
+### Accounts and registration (not implemented)
+
+The API can only log seeded accounts in (`POST /sessions`); it cannot create users, so the apps
+offer no sign-up and no password reset and say so on the sign-in screen. A production system would
+need, at least:
+
+- **Verified identity, not self-declared roles.** Students and staff sign in through the
+  university's identity provider (OIDC or SAML, opened in the system browser:
+  `ASWebAuthenticationSession`, Custom Tabs, with PKCE), and the server derives the price group from
+  verified enrolment or employment. The app never chooses or sends a price group. Guests get a
+  self-service account (email verified) that the server places in the guest group.
+- **Server endpoints** for registration, email verification, password reset (single-use, expiring,
+  rate-limited tokens sent out of band), refresh tokens with rotation and revocation, and account
+  deletion (GDPR), with passwords hashed server-side (e.g. Argon2id) and abuse protection.
+- **Cashier accounts provisioned by the operator**, bound to a mensa and a till, ideally on a managed
+  (MDM) device, with a short PIN to switch cashiers rather than a full password at every shift.
+- **Passkeys or a device key** for sign-in and for server-verifiable payment approval (section 4).
 
 ## 5. Technology choices
 
@@ -127,6 +152,8 @@ money without a new build:
 - Give reports a version or ETag and a generated-at time; offer a server-side CSV export or a
   snapshot cursor, so an export is consistent across pages; return a total count with lists.
 - Answer every ended session with `401 session_expired`; add refresh tokens.
+- Registration, verification and password-reset endpoints, or sign-in through the university's
+  identity provider, with the price group derived on the server.
 - Grow `Order.version` on expiry, as documented.
 - Declare `X-Candidate-Id` (required), `X-App-Version`, `Date` and `Idempotent-Replayed` in the spec.
 - Specify and sign the QR payload.
@@ -137,7 +164,9 @@ money without a new build:
 
 - **Debug-signed APKs**, not store builds.
 - **Client-side mock authentication**: the published test password is inlined into the apps and
-  the dashboard.
+  the dashboard for the one-tap demo accounts; typed sign-in works without it. No registration or
+  password reset (the API has none).
+- **Language changes on iOS** need the app to restart, which iOS does itself; Android switches live.
 - **No lookup by idempotency key**: an unknown payment older than 24 hours stays unknown; an unknown
   refund keeps blocking further refunds of that payment.
 - **Unversioned reports and exports**: "last fetched" is when a copy arrived; an export is a complete

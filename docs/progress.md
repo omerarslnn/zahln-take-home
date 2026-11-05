@@ -772,6 +772,101 @@ instead of 2 dp, actions inside banners laid out below their text. Layouts other
   have the same structure. `ListRow` is the replacement.
 - Physical screen-reader passes (A1–A4) and the maximum-font check on devices (S12).
 
+## Phase 3: sign-in and the device language (2026-11-05)
+
+Typed username and password sign-in beside the one-tap demo accounts, a role check before any
+account is shown, the redesigned sign-in screens, and the language following the device. Payments,
+refunds, QR, history, the payment gate and its recovery are unchanged; the dashboard changed only in
+its sign-in wiring (same messages, same routes and numbers).
+
+### Authentication (`1b49ed7`)
+
+- **Role check before publishing** (`SessionCoordinator`, `acceptsUser`): the student app accepts
+  student, staff and guest, the till cashier, the dashboard finance. A wrong-role account is answered
+  `wrong_role` without ever becoming `user()` or reaching a listener, so the navigator never shows
+  Home and no payment controller is built for it. Typed sign-in made this necessary: before, the
+  native apps offered only their own seeded accounts and checked no role, and the dashboard checked
+  it after the session had been published. The check sits in the coordinator so the session is
+  never published at all; it is the smallest change that does that.
+- **Credentials**: dropped when a sign-in fails or is rejected for its role, and when a re-login is
+  refused or answers for someone else or a role the app does not serve (the re-login also checks
+  the role now). Kept while signed in, in memory, for the 5-minute re-login (mock-only).
+- **No connection** (`no_connection`: no response at all) is told apart from a server that answers
+  without a session (`login_unavailable`) on the sign-in screens; calls still report
+  `login_unavailable`, so no payment code changed.
+- **`SignInFlow`**: one attempt at a time for typed and demo sign-in, empty fields reported without
+  a request; both go through the same `SessionCoordinator.signIn`.
+- **Screens**: both sign-in screens rebuilt on the Phase 2 primitives (see
+  [design-system.md](design-system.md), "Sign-in screens"). New primitive capabilities:
+  `TextField` `trailing`, `PasswordField`, `ListRow` `icon` / `busy` / `disabled`, `Screen`
+  `headerless`. The till's two-column layout from 768 dp.
+- **No registration**: the screens say so; [design.md](design.md) section 4 lists what a production
+  registration would need.
+
+### Localization (`1c48f3c`)
+
+- The apps follow the device's language preference (first supported of German and English,
+  otherwise English), read at start-up, on Android's locale-change event and on every return to the
+  foreground ([architecture.md](architecture.md#internationalisation)). iOS restarts an app when
+  its language changes; that is the platform's behaviour, not something the app can avoid.
+- The language switches on the student's Home, the till's Checkout and both sign-in screens are
+  gone; Diagnostics has a session-only override with "Device language (…)" to return. Nothing is
+  persisted. The provider sits above the payment services, so a change never rebuilds the session or
+  a controller.
+- `expo-localization`'s config plugin (already a dependency, no new package): Android activity
+  handles `locale` and `layoutDirection` itself (no recreation on a language change), declares
+  `locales_config.xml` (per-app languages on Android 13+) and keeps only English and German
+  resources of libraries; iOS gets `CFBundleLocalizations` = en, de (checked with
+  `expo config --type introspect`). Student build 5, till build 4.
+
+### Tests (+33, 259 in total)
+
+| Area                                     | Tests                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `sign-in.test.ts` (domain, 21)           | typed sign-in; wrong password and unknown user; empty fields send nothing; no connection vs 503 vs 504; every payer demo account and a cashier on the till; no demo password; one attempt at a time; a cashier rejected in the student app and a payer on the till without ever being published; a wrong-role sign-in replacing a payer; a slow sign-in replaced by a sign-out or by a newer sign-in; sign-out drops session and credentials; calls for the previous account after a switch; re-login with typed credentials repeats the write with its key; offline re-login keeps the credentials; refused re-login drops them; a re-login with a changed role is not adopted; an unresolved payment found again after sign-out, another account and a typed sign-in, resent once with its key |
+| `sign-in-text.test.ts` (student copy, 7) | each failure has its own message, none for replaced or overlapping attempts; wrong role per app; German and English differ and leave no placeholder; field errors; spoken field labels with their error in both languages; password button labels; every sign-in string translated                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `language.test.ts` (shared, 5)           | German for every `de-*`; English for English and unsupported languages; the first supported language in preference order; following device changes; the override kept through device changes until "follow system"                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+
+Mutation check of the new rules (each mutant run against the session and sign-in tests): the role
+check in `signIn`, dropping credentials after a failed sign-in, the `no_connection` distinction,
+the role check on re-login, dropping credentials after a refused re-login, the one-attempt guard and
+trimming the username: all 7 caught. The guard's mutant first made the concurrency test hang rather
+than fail; the test now starts the second attempt before releasing the first, so it fails.
+
+### Checks (2026-11-05, fresh runs)
+
+| Check                                        | Result         | Notes                                                                                                                                                                                                                                                                                                               |
+| -------------------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm check`                                 | passed         | Both commits on their own (254 tests after the first, 259 after the second); 35 identical native files                                                                                                                                                                                                              |
+| `pnpm bundle:native`                         | passed         | Both apps, iOS and Android (Hermes 3.73–3.76 MB). No catalogue, test double or finance code in any of the four bundles                                                                                                                                                                                              |
+| `expo install --check`                       | passed         | Both apps; no dependency added or changed                                                                                                                                                                                                                                                                           |
+| `pnpm dashboard:browser-check`               | passed (36/36) | Local build (`pnpm dashboard:preview`) with the dashboard's new sign-in wiring (role policy in the coordinator); read-only. Not redeployed                                                                                                                                                                          |
+| Student release APK (build 5, `1c48f3c`)     | built          | `mensa-student-1.0.0-5-armeabi-v7a+arm64-v8a-1c48f3c.apk`, 50,176,873 bytes (build 4: 50,749,097, −572 kB: other languages' library resources dropped). Same 6 permissions. `configChanges` 0x7b0 → 0x27b4 (`locale`, `layoutDirection`), `localeConfig` declared                                                   |
+| Till release APK (build 4, `1c48f3c`)        | built          | `mensa-till-1.0.0-4-armeabi-v7a+arm64-v8a-1c48f3c.apk`, 39,371,658 bytes (build 3: 39,700,722, −329 kB). Same 2 permissions, no development-client components, same `configChanges` change and `localeConfig` (en, de). A first build was marked `-dirty` (docs being edited) and was rebuilt from the clean commit |
+| Android emulator, Expo Go (Medium Phone, 16) | done           | Student sign-in: empty fields, wrong password (live `401 invalid_credentials`), a cashier rejected (live), offline (`no_connection`), a demo sign-in to Home; return key "next" → "go". Till: phone and 800 × 1280 dp tablet layout, a demo cashier into Checkout. English. Sessions only                           |
+| Larger text                                  | done           | Student sign-in at 200 %: everything wraps, no clipped field or button. Found and fixed: scrolled text passed under the transparent status bar of the headerless screen                                                                                                                                             |
+| Found and fixed on the emulator              | —              | Disabling the fields during a sign-in moved keyboard focus to "Show password"; the fields now stay editable while the request runs                                                                                                                                                                                  |
+| German screens, Diagnostics override         | not run        | The emulator was closed from its window twice during this phase (after about 2 minutes the second time); no further emulator or simulator windows were opened. Covered by unit tests; G1–G7 on devices                                                                                                              |
+| Release builds on the emulator               | not run        | Same reason: the live Android language change (G3, G4) is verified only statically (merged manifest), not at runtime                                                                                                                                                                                                |
+| iPhone and iPad simulators                   | not run        | Same reason. The iPad layout was checked at tablet width on the Android emulator                                                                                                                                                                                                                                    |
+| Physical devices, screen readers             | not run        | L1–L13, G1–G7 and A1–A4 are for the owner                                                                                                                                                                                                                                                                           |
+
+Screenshots (git-ignored, `.local/phase3-screenshots/`): `after-*` student sign-in (EN), wrong
+password, wrong role, offline, 200 % text; till sign-in on a phone and at tablet width, Checkout
+after a demo sign-in. `before-*`: Phase 2's sign-in screens (student, till phone and tablet).
+
+Checksums (SHA-256): student build 5
+`f538ad32a538cfa3e96c0b0910775750d204b58884f46b8a23392c8264d86e4b`, till build 4
+`4a97e78aa350286446dca23afc63d9f5f7c542c9189065bf538ed5ef0c231192`.
+
+### Remaining
+
+- Physical checks: L1–L13 and G1–G7 ([manual-tests.md](manual-tests.md)), and the earlier A1–A4 and
+  S12. The iPhone and iPad development builds need `expo run:ios --device` again to declare both
+  languages (per-app language in iOS Settings).
+- German screenshots and the emulator run of the release builds (live language change), not run
+  for the reason above.
+
 ## Manual steps
 
 1. **pnpm on PATH**: `corepack enable pnpm` (undo: `corepack disable pnpm`), or prefix commands with
@@ -782,8 +877,8 @@ instead of 2 dp, actions inside banners laid out below their text. Layouts other
    Metro. It is public mock data, inlined into the apps and the dashboard.
 3. **Pixel XL (student)**: enable USB debugging; `adb devices -l`;
    `adb shell getprop ro.product.cpu.abilist` (expect `arm64-v8a,…`); then
-   `adb -s <serial> install -r artifacts/android/mensa-student-1.0.0-4-armeabi-v7a+arm64-v8a-deedd3e.apk`
-   (or the arm64 file). It replaces an earlier build in place and keeps its data. Set a PIN and enrol
+   `adb -s <serial> install -r artifacts/android/mensa-student-1.0.0-5-armeabi-v7a+arm64-v8a-1c48f3c.apk`
+   (build 5, Phase 3). It replaces an earlier build in place and keeps its data. Set a PIN and enrol
    a fingerprint, then follow [manual-tests.md](manual-tests.md).
 4. **iPad (till)**: development build once with
    `pnpm --filter @mensa/till exec expo run:ios --device --port 8082`, then `pnpm till` (Metro 8082)
@@ -805,8 +900,9 @@ instead of 2 dp, actions inside banners laid out below their text. Layouts other
 
 ## Remaining for stage 5: submission
 
-1. The UI polish phases agreed on 2026-11-04: the design system is done (Phase 2, awaiting the
-   owner's review); sign-in and the student and till screens follow, each with its own checks.
+1. The UI polish phases agreed on 2026-11-04: the design system (Phase 2) and sign-in with the
+   device language (Phase 3, awaiting the owner's review) are done; the student and till screens
+   follow, each with its own checks.
 2. Device checks not run yet: TalkBack, VoiceOver, maximum font sizes, N6 with a genuinely
    unresolved payment, and the other rows listed under "Not run on a device"; the dashboard's D1–D4.
 3. Final read-through of the README and [design.md](design.md); invite the reviewers; rehearse the
