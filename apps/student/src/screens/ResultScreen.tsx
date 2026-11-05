@@ -2,36 +2,41 @@ import {
   isFinal,
   paymentDisplay,
   PaymentAuthorizer,
+  type GateState,
   type IntentRecord,
   type PaymentBinding,
+  type PaymentDisplay,
+  type PollState,
 } from '@mensa/domain';
-import { formatBerlinDateTime, formatCents, type MessageKey } from '@mensa/shared';
+import { colors, formatBerlinDateTime, formatCents, type MessageKey } from '@mensa/shared';
 import { useI18n } from '@mensa/shared/react';
 import { useIsFocused } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useEffect, useRef, useState } from 'react';
-import { Text } from 'react-native';
+import { useEffect, useRef, useState, type Ref } from 'react';
+import { Text, View } from 'react-native';
 import { gateAnnouncement, paymentsOpen } from '../availability';
+import { OutcomeHero } from '../components/OutcomeHero';
 import { AvailabilityNotice } from '../components/PaymentAvailability';
 import {
-  Body,
   Button,
+  Caption,
   Card,
+  Icon,
   LabelledValue,
   Notice,
   Screen,
-  StatusPill,
   useAccessibilityFocus,
   useAnnouncement,
 } from '../components/ui';
 import { authenticateLocally } from '../local-auth';
 import type { RootStackParamList } from '../navigation';
-import { afterResend, describeOutcome, refusalText } from '../payment-outcome';
+import { afterResend, describeOutcome, refusalText, type OutcomeText } from '../payment-outcome';
 import {
   useControllerRevision,
   usePaymentGate,
   usePaymentServices,
 } from '../payments/PaymentServices';
+import { outcomeVisual } from '../result-visual';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Result'>;
 
@@ -43,7 +48,8 @@ const needsSending = (record: IntentRecord | undefined) =>
  * The truthful state of one payment action. `applied` only means the server created the payment;
  * the words come from the payment's own status, so pending is never shown as paid, and an
  * unanswered request is "checking", never failed. Reachable again from Home after leaving or a
- * restart, because the action is saved on the device.
+ * restart, because the action is saved on the device. This container owns the rules (checking,
+ * the authorized resend, dismissing); `ResultView` only renders.
  */
 export function ResultScreen({ route, navigation }: Props) {
   const { key } = route.params;
@@ -140,87 +146,159 @@ export function ResultScreen({ route, navigation }: Props) {
   }
 
   return (
+    <ResultView
+      outcome={outcome}
+      display={paymentDisplay(intent)}
+      amountCents={intent.payload.amountCents}
+      refusal={intent.refusal}
+      pollState={pollState}
+      payment={
+        payment
+          ? {
+              place: `${payment.mensa.name} · ${payment.till.name}`,
+              createdAt: payment.createdAt,
+            }
+          : null
+      }
+      gate={gate}
+      final={isFinal(intent)}
+      busy={busy}
+      message={message}
+      headingRef={headingRef}
+      onCheckAgain={() => void checkAgain()}
+      onSendAgain={() => void sendAgain()}
+      onTryAgain={() => navigation.navigate('Review', { orderId: intent.payload.orderId })}
+      onDetails={
+        payment ? () => navigation.navigate('PaymentDetail', { paymentId: payment.id }) : null
+      }
+      onDone={done}
+    />
+  );
+}
+
+export interface ResultViewProps {
+  outcome: OutcomeText;
+  display: PaymentDisplay;
+  /** The amount the payer confirmed: the server's amount for the reviewed order. */
+  amountCents: number;
+  /** The server's last refusal code, shown while the outcome is still unknown. */
+  refusal: string | null;
+  pollState: PollState;
+  /** Known once the server has answered with the payment. */
+  payment: { place: string; createdAt: string } | null;
+  gate: GateState | null;
+  /** A known final result: the footer says "Done" and dismisses it. */
+  final: boolean;
+  busy: 'check' | 'send' | null;
+  message: MessageKey | null;
+  headingRef?: Ref<Text>;
+  onCheckAgain: () => void;
+  onSendAgain: () => void;
+  onTryAgain: () => void;
+  onDetails: (() => void) | null;
+  onDone: () => void;
+}
+
+/**
+ * The result: a hero with the state's icon, words and the amount, then only the actions that state
+ * allows. Not known yet: check again and send again safely (which waits for availability). Being
+ * checked: check again. Declined: try again with a new confirmation. Paid: the details.
+ */
+export function ResultView({ headingRef, ...props }: ResultViewProps) {
+  const { t, locale } = useI18n();
+  const { display, outcome } = props;
+  const visual = outcomeVisual(display, outcome.tone);
+  const resendable = display === 'checking' || display === 'not_sent';
+  const checking = display === 'pending' || display === 'checking';
+  return (
     <Screen
       footer={
         <Button
           tone="secondary"
-          label={t(isFinal(intent) ? 'result.done' : 'result.later')}
-          onPress={done}
+          label={t(props.final ? 'result.done' : 'result.later')}
+          onPress={props.onDone}
         />
       }
     >
-      <Text ref={headingRef} accessibilityRole="header" className="text-2xl font-bold text-ink">
-        {t(outcome.title)}
-      </Text>
-      <StatusPill tone={outcome.tone} label={t(outcome.title)} />
-      <Body>{t(outcome.body)}</Body>
+      <OutcomeHero
+        tone={outcome.tone}
+        icon={visual.icon}
+        celebrate={visual.celebrate}
+        title={t(outcome.title)}
+        body={t(outcome.body)}
+        amountCents={props.amountCents}
+        headingRef={headingRef}
+      />
 
-      <Card>
-        <LabelledValue label={t('payment.amount')} value={amount} />
-        {payment ? (
-          <>
-            <LabelledValue
-              label={t('payment.place')}
-              value={`${payment.mensa.name} · ${payment.till.name}`}
-            />
-            <LabelledValue
-              label={t('payment.createdAt')}
-              value={`${formatBerlinDateTime(payment.createdAt, locale)} (${t('time.berlin')})`}
-            />
-          </>
-        ) : null}
-      </Card>
-
-      {display === 'checking' && intent.refusal ? (
+      {display === 'checking' && props.refusal ? (
         <Notice
           tone="neutral"
           title={t('result.lastAnswer')}
-          description={t(refusalText(intent.refusal))}
+          description={t(refusalText(props.refusal))}
         />
       ) : null}
 
-      {display === 'pending' || display === 'checking' ? (
-        <Body muted>{t(`result.poll.${pollState}`)}</Body>
+      {checking ? (
+        <View className="flex-row items-center justify-center gap-2">
+          <Icon
+            name={props.pollState === 'polling' ? 'sync-outline' : 'pause-circle-outline'}
+            size="sm"
+            color={colors.inkMuted}
+          />
+          <Caption>{t(`result.poll.${props.pollState}`)}</Caption>
+        </View>
       ) : null}
 
-      {display === 'pending' || display === 'checking' ? (
+      {checking ? (
         <Button
           tone="secondary"
+          icon="refresh-outline"
           label={t('result.checkAgain')}
-          busy={busy === 'check'}
-          disabled={busy === 'send'}
-          onPress={() => void checkAgain()}
+          busy={props.busy === 'check'}
+          disabled={props.busy === 'send'}
+          onPress={props.onCheckAgain}
         />
       ) : null}
-      {resendable ? <AvailabilityNotice gate={gate} detail={t('result.resendWaits')} /> : null}
+      {resendable ? (
+        <AvailabilityNotice gate={props.gate} detail={t('result.resendWaits')} />
+      ) : null}
       {resendable ? (
         <Button
+          icon="shield-checkmark-outline"
           label={t(display === 'checking' ? 'result.sendAgain' : 'result.sendNow')}
           hint={t('result.sendAgainHint')}
-          busy={busy === 'send'}
-          disabled={busy === 'check' || !paymentsOpen(gate)}
-          onPress={() => void sendAgain()}
+          busy={props.busy === 'send'}
+          disabled={props.busy === 'check' || !paymentsOpen(props.gate)}
+          onPress={props.onSendAgain}
         />
       ) : null}
       {display === 'declined' ? (
-        <Button
-          label={t('result.tryAgain')}
-          onPress={() => navigation.navigate('Review', { orderId: intent.payload.orderId })}
-        />
-      ) : null}
-      {payment ? (
-        <Button
-          tone="secondary"
-          label={t('result.details')}
-          onPress={() => navigation.navigate('PaymentDetail', { paymentId: payment.id })}
-        />
+        <Button label={t('result.tryAgain')} onPress={props.onTryAgain} />
       ) : null}
 
-      {message ? (
+      {props.payment ? (
+        <Card>
+          <LabelledValue label={t('payment.place')} value={props.payment.place} />
+          <LabelledValue
+            label={t('payment.createdAt')}
+            value={`${formatBerlinDateTime(props.payment.createdAt, locale)} (${t('time.berlin')})`}
+          />
+          {props.onDetails ? (
+            <Button
+              tone="tertiary"
+              icon="receipt-outline"
+              label={t('result.details')}
+              onPress={props.onDetails}
+            />
+          ) : null}
+        </Card>
+      ) : null}
+
+      {props.message ? (
         <Notice
           tone="warning"
-          title={t(message)}
-          description={message === 'auth.not_enrolled' ? t('auth.enrollHelp') : undefined}
+          title={t(props.message)}
+          description={props.message === 'auth.not_enrolled' ? t('auth.enrollHelp') : undefined}
         />
       ) : null}
     </Screen>

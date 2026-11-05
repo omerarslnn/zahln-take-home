@@ -9,7 +9,7 @@ import type { IconName } from './styles';
  */
 export function Tag({ label, icon }: { label: string; icon?: IconName }) {
   return (
-    <View className="flex-row items-center gap-1 self-start rounded-full bg-brand-subtle px-3 py-1">
+    <View className="flex-row items-center gap-1 self-start rounded-full border border-transparent bg-brand-subtle px-3 py-1">
       {icon ? <Icon name={icon} size="sm" color={colors.brandStrong} /> : null}
       <Text className="shrink text-caption font-semibold text-brand-strong">{label}</Text>
     </View>

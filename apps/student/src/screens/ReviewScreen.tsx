@@ -10,18 +10,24 @@ import { formatCents } from '@mensa/shared';
 import { useI18n } from '@mensa/shared/react';
 import { useIsFocused } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useLayoutEffect, useRef, useState } from 'react';
-import { Text, View } from 'react-native';
+import type { GateState, Order } from '@mensa/domain';
+import { useLayoutEffect, useRef, useState, type Ref } from 'react';
+import { View } from 'react-native';
 import { gateAnnouncement, paymentsOpen } from '../availability';
+import { CountdownTag, MerchantHeader, OrderItemRow, PayAction } from '../components/OrderParts';
 import { AvailabilityNotice } from '../components/PaymentAvailability';
 import { priceGroupKey } from '../components/payment-text';
 import {
+  AmountText,
   Body,
   Button,
+  Caption,
   Card,
-  LabelledValue,
+  LoadingIndicator,
   Notice,
   Screen,
+  Skeleton,
+  Tag,
   useAccessibilityFocus,
   useAnnouncement,
 } from '../components/ui';
@@ -34,14 +40,15 @@ import {
   usePaymentServices,
   useServerNow,
 } from '../payments/PaymentServices';
-import { useOrder } from '../useOrder';
+import { useOrder, type OrderFailure } from '../useOrder';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Review'>;
 
 /**
  * Shows the scanned order as the server prices it for this payer, and pays exactly that after local
  * authorization. The server is the authority: the amount is its `amountCents`, never a sum computed
- * here, and expiry is judged by server time.
+ * here, and expiry is judged by server time. This container owns every rule (the authorization
+ * binding, the guards, the navigation); `ReviewView` only renders what it is given.
  */
 export function ReviewScreen({ route, navigation }: Props) {
   const { orderId } = route.params;
@@ -143,108 +150,185 @@ export function ReviewScreen({ route, navigation }: Props) {
 
   if (!order) {
     return (
-      <Screen>
-        {failure ? (
-          <Notice
-            tone="error"
-            title={t(`review.failure.${failure}`)}
-            actions={
-              <>
-                <Button label={t('common.retry')} onPress={() => void reload()} />
-                <Button
-                  tone="secondary"
-                  label={t('scan.again')}
-                  onPress={() => navigation.goBack()}
-                />
-              </>
-            }
-          />
-        ) : (
-          <Notice tone="neutral" title={t('review.loading')} />
-        )}
-      </Screen>
+      <ReviewLoading
+        failure={failure}
+        onRetry={() => void reload()}
+        onBack={() => navigation.goBack()}
+      />
     );
   }
 
   const formattedAmount = amount !== null ? formatCents(amount, locale) : '–';
   return (
+    <ReviewView
+      order={order}
+      expiry={expiry}
+      secondsLeft={secondsLeft}
+      gate={gate}
+      pay={
+        payable
+          ? {
+              label: t(existing ? 'review.payAgain' : 'review.pay', { amount: formattedAmount }),
+              busy,
+              onPress: () => void pay(),
+            }
+          : null
+      }
+      earlier={unresolved ? 'unresolved' : paidByMe ? 'paidByMe' : null}
+      onShowStatus={() => existing && navigation.navigate('Result', { key: existing.key })}
+      message={message}
+      summaryRef={summaryRef}
+    />
+  );
+}
+
+export interface ReviewViewProps {
+  /** The payer's view of the order: mensa, till, items with the payer's unit prices, amount. */
+  order: Order;
+  expiry: 'not_expired' | 'expired' | 'uncertain';
+  /** Seconds left by server time; null while the server time is not known. */
+  secondsLeft: number | null;
+  gate: GateState | null;
+  /** The pay action, only while paying is possible. */
+  pay: { label: string; busy: boolean; onPress: () => void } | null;
+  /** This payer's earlier action for the order. */
+  earlier: 'unresolved' | 'paidByMe' | null;
+  onShowStatus: () => void;
+  message: ScreenMessage | null;
+  summaryRef?: Ref<View>;
+}
+
+/**
+ * The review: where, the amount to pay as the hero with the server's price group and the time
+ * left, the items, then whatever stands in the way (the order's state, availability, an earlier
+ * payment, the last message). "Pay" sits in the bottom bar, above the home indicator.
+ */
+export function ReviewView({ summaryRef, ...props }: ReviewViewProps) {
+  const { t, locale } = useI18n();
+  const { order } = props;
+  const amount = order.amountCents ?? null;
+  const formattedAmount = amount !== null ? formatCents(amount, locale) : '–';
+  return (
     <Screen
       footer={
-        <>
-          <View
-            accessible
-            accessibilityLabel={t('review.amountLabel', { amount: formattedAmount })}
-          >
-            <Text className="text-base text-ink-muted">{t('review.amount')}</Text>
-            <Text className="text-3xl font-bold text-ink">{formattedAmount}</Text>
-          </View>
-          {payable ? (
-            <Button
-              label={t(existing ? 'review.payAgain' : 'review.pay', { amount: formattedAmount })}
-              hint={t('review.payHint')}
-              busy={busy}
-              onPress={() => void pay()}
-            />
-          ) : null}
-        </>
+        props.pay ? (
+          <PayAction label={props.pay.label} busy={props.pay.busy} onPress={props.pay.onPress} />
+        ) : undefined
       }
     >
-      <View ref={summaryRef} accessible className="gap-1">
-        <Text accessibilityRole="header" className="text-2xl font-bold text-ink">
-          {order.mensa.name}
-        </Text>
-        <Body muted>{order.till.name}</Body>
-      </View>
+      <MerchantHeader ref={summaryRef} mensa={order.mensa.name} till={order.till.name} />
+
+      <Card>
+        <View accessible accessibilityLabel={t('review.amountLabel', { amount: formattedAmount })}>
+          <Caption>{t('review.amount')}</Caption>
+          {amount !== null ? <AmountText cents={amount} size="display" /> : <Body muted>–</Body>}
+        </View>
+        <View className="flex-row flex-wrap gap-2">
+          {order.priceGroup ? (
+            <Tag
+              icon="pricetag-outline"
+              label={t('home.priceGroup', { group: t(priceGroupKey(order.priceGroup)) })}
+            />
+          ) : null}
+          {order.status === 'open' &&
+          props.expiry === 'not_expired' &&
+          props.secondsLeft !== null ? (
+            <CountdownTag secondsLeft={props.secondsLeft} />
+          ) : null}
+        </View>
+      </Card>
 
       <Card title={t('payment.items')}>
-        {order.items.map((item) => (
-          <Text key={item.itemId} className="text-base text-ink">
-            {item.quantity} × {item.name[locale]}
-            {item.unitPriceCents != null
-              ? ` · ${t('payment.each', { price: formatCents(item.unitPriceCents, locale) })}`
-              : ''}
-          </Text>
+        {order.items.map((item, index) => (
+          <OrderItemRow
+            key={item.itemId}
+            quantity={item.quantity}
+            name={item.name[locale]}
+            unitPriceCents={item.unitPriceCents ?? null}
+            separated={index > 0}
+          />
         ))}
-        <LabelledValue
-          label={t('payment.priceGroup')}
-          value={order.priceGroup ? t(priceGroupKey(order.priceGroup)) : '–'}
-        />
       </Card>
 
       <OrderState
         status={order.status}
         ownPayment={Boolean(order.paymentId)}
-        expiry={expiry}
-        secondsLeft={secondsLeft}
+        expiry={props.expiry}
+        secondsLeft={props.secondsLeft}
       />
 
-      {order.status === 'open' ? <AvailabilityNotice gate={gate} /> : null}
+      {order.status === 'open' ? <AvailabilityNotice gate={props.gate} /> : null}
 
-      {unresolved || paidByMe ? (
+      {props.earlier ? (
         <Notice
           tone="neutral"
-          title={t(unresolved ? 'review.alreadyStarted' : 'review.paidByYou')}
+          title={t(props.earlier === 'unresolved' ? 'review.alreadyStarted' : 'review.paidByYou')}
           actions={
-            <Button
-              tone="secondary"
-              label={t('review.showStatus')}
-              onPress={() => existing && navigation.navigate('Result', { key: existing.key })}
-            />
+            <Button tone="secondary" label={t('review.showStatus')} onPress={props.onShowStatus} />
           }
         />
       ) : null}
 
-      {message ? (
+      {props.message ? (
         <Notice
-          tone={message.tone}
-          title={t(message.key)}
-          description={message.key === 'auth.not_enrolled' ? t('auth.enrollHelp') : undefined}
+          tone={props.message.tone}
+          title={t(props.message.key)}
+          description={props.message.key === 'auth.not_enrolled' ? t('auth.enrollHelp') : undefined}
         />
       ) : null}
     </Screen>
   );
 }
 
+/** The order on its way (placeholders in the review's shape), or why it could not be read. */
+export function ReviewLoading({
+  failure,
+  onRetry,
+  onBack,
+}: {
+  failure: OrderFailure | null;
+  onRetry: () => void;
+  onBack: () => void;
+}) {
+  const { t } = useI18n();
+  if (failure) {
+    return (
+      <Screen>
+        <Notice
+          tone="error"
+          title={t(`review.failure.${failure}`)}
+          actions={
+            <>
+              <Button label={t('common.retry')} onPress={onRetry} />
+              <Button tone="secondary" label={t('scan.again')} onPress={onBack} />
+            </>
+          }
+        />
+      </Screen>
+    );
+  }
+  return (
+    <Screen>
+      <View className="flex-row items-center gap-3">
+        <Skeleton width={48} height={48} />
+        <View className="flex-1 gap-2">
+          <Skeleton width="70%" height={24} />
+          <Skeleton width="40%" height={14} />
+        </View>
+      </View>
+      <Card>
+        <Skeleton width="35%" height={14} />
+        <Skeleton width="55%" height={40} />
+      </Card>
+      <LoadingIndicator label={t('review.loading')} />
+    </Screen>
+  );
+}
+
+/**
+ * What stands in the way on the order itself. While it is open and the time is known, the countdown
+ * tag in the amount card says how long is left, so nothing is shown here.
+ */
 function OrderState(props: {
   status: 'open' | 'paying' | 'paid' | 'expired';
   ownPayment: boolean;
@@ -271,7 +355,5 @@ function OrderState(props: {
   if (props.secondsLeft === null || props.expiry === 'uncertain') {
     return <Body muted>{t('review.timeUnknown')}</Body>;
   }
-  const minutes = Math.floor(props.secondsLeft / 60);
-  const seconds = String(props.secondsLeft % 60).padStart(2, '0');
-  return <Body muted>{t('review.expiresIn', { time: `${minutes}:${seconds}` })}</Body>;
+  return null;
 }

@@ -27,11 +27,18 @@ export function DiagnosticsScreen({ navigation }: Props) {
       <SecureStorageCheck />
       <LanguageSetting />
       {__DEV__ ? (
-        <Button
-          tone="tertiary"
-          label="Design system (development)"
-          onPress={() => navigation.navigate('DesignCatalogue')}
-        />
+        <>
+          <Button
+            tone="tertiary"
+            label="Design system (development)"
+            onPress={() => navigation.navigate('DesignCatalogue')}
+          />
+          <Button
+            tone="tertiary"
+            label="Payment screen states (development)"
+            onPress={() => navigation.navigate('PaymentStates')}
+          />
+        </>
       ) : null}
     </Screen>
   );

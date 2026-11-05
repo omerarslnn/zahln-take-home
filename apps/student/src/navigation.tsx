@@ -1,6 +1,7 @@
 import { useI18n } from '@mensa/shared/react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type * as Catalogue from './screens/DesignCatalogueScreen';
+import type * as States from './screens/PaymentStatesScreen';
 import { usePaymentServices } from './payments/PaymentServices';
 import { DiagnosticsScreen } from './screens/DiagnosticsScreen';
 import { HistoryScreen } from './screens/HistoryScreen';
@@ -24,6 +25,9 @@ export type RootStackParamList = {
   Diagnostics: undefined;
   /** Development builds only: the design-system catalogue. */
   DesignCatalogue: undefined;
+  /** Development builds only: the payment screens' views in each state, with sample data. */
+  PaymentStates: undefined;
+  PaymentStatePreview: { state: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -82,15 +86,33 @@ export function RootNavigator() {
         options={{ title: t('nav.diagnostics') }}
       />
       {__DEV__ ? (
-        // Development only: the require sits in a branch Metro removes from release bundles.
-        <Stack.Screen
-          name="DesignCatalogue"
-          getComponent={() =>
-            // eslint-disable-next-line @typescript-eslint/no-require-imports
-            (require('./screens/DesignCatalogueScreen') as typeof Catalogue).DesignCatalogueScreen
-          }
-          options={{ title: 'Design system' }}
-        />
+        // Development only: the requires sit in a branch Metro removes from release bundles.
+        <>
+          <Stack.Screen
+            name="DesignCatalogue"
+            getComponent={() =>
+              // eslint-disable-next-line @typescript-eslint/no-require-imports
+              (require('./screens/DesignCatalogueScreen') as typeof Catalogue).DesignCatalogueScreen
+            }
+            options={{ title: 'Design system' }}
+          />
+          <Stack.Screen
+            name="PaymentStates"
+            getComponent={() =>
+              // eslint-disable-next-line @typescript-eslint/no-require-imports
+              (require('./screens/PaymentStatesScreen') as typeof States).PaymentStatesScreen
+            }
+            options={{ title: 'Payment screen states' }}
+          />
+          <Stack.Screen
+            name="PaymentStatePreview"
+            getComponent={() =>
+              // eslint-disable-next-line @typescript-eslint/no-require-imports
+              (require('./screens/PaymentStatesScreen') as typeof States).PaymentStatePreviewScreen
+            }
+            options={{ title: 'Preview (sample data)' }}
+          />
+        </>
       ) : null}
     </Stack.Navigator>
   );
