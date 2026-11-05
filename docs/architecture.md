@@ -362,6 +362,11 @@ SignIn ─▶ Home ─▶ Scan ─▶ Review ─▶ (local authorization) ─▶
 | Result    | `screens/ResultScreen.tsx`, `payment-outcome.ts`                                      | Words come from `paymentDisplay`: only `confirmed` is "Paid". "Check again" only reads; "Send again safely" re-sends the same key and body after a new local authorization.                                                                                                     |
 | History   | `screens/HistoryScreen.tsx`, `PaymentHistory` + `mergeHistory`                        | Pages load on request; a late page from an earlier load is dropped; an action without an answer is shown without an invented payment ID; an identified payment appears once.                                                                                                    |
 
+Since Phase 4 each of these screens is a container that holds exactly the protections above (its
+hooks, the authorizer, the guards, the navigation) and a pure view (`HomeView`, `ReviewView`,
+`ResultView`, `HistoryView`, `PaymentDetailView`) that renders props and holds no rule; the
+development-only "Payment screen states" renders the views from sample data.
+
 The local authorization is a demonstration of a device-side gate. The mock server does not verify a
 biometric or a PIN; it only checks the bearer token. A production system would bind approval to a
 device key the server can verify (a signed challenge), as strong customer authentication requires.

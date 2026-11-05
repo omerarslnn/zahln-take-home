@@ -103,8 +103,9 @@ live in `styles.ts` and `a11y-text.ts` and are unit-tested in Node.
 | `IconButton`                                                                  | 48 × 48 dp, icon only, a required spoken `label`                                                                                                                                 |
 | `Card`, `Section`                                                             | A white surface with a hairline and an optional heading; a titled group without a surface                                                                                        |
 | `LabelledValue`                                                               | "Label: value", read as one phrase                                                                                                                                               |
-| `ListRow`                                                                     | Title, status, subtitle, trailing value, chevron when it opens something; optional leading `icon`, `busy` (spinner for the chevron) and `disabled`; read as one phrase           |
+| `ListRow`                                                                     | Title, then status and subtitle on one wrapping line, trailing value, chevron when it opens something; optional leading `icon`, `busy` and `disabled`; read as one phrase        |
 | `StatusPill`                                                                  | A tone's icon and words on its tint                                                                                                                                              |
+| `Tag`                                                                         | A fact (the price group, time left) on a brand tint; not a status, never changes with a result                                                                                   |
 | `Notice`                                                                      | A banner: icon, title, description as one accessible group; `actions` outside it                                                                                                 |
 | `AmountText`                                                                  | Server cents in the current language's format, tabular figures; it never calculates                                                                                              |
 | `TextField`                                                                   | Visible label, hint, error (icon + text), every keyboard prop and an optional `trailing` control inside the border; one stop for screen readers (the control is its own stop)    |
@@ -129,6 +130,13 @@ In development builds Diagnostics links to **Design system**: every primitive in
 colour tokens and the type scale. It is registered only under `__DEV__`, so release bundles do not
 contain it (checked: none of its strings is in the exported Hermes bundles). Its sample texts are
 English on purpose: it is a review tool, not a product screen.
+
+**Payment screen states** (Phase 4, development builds only, also linked from Diagnostics) renders
+the student screens' real views (`HomeView`, `ReviewView`, `ResultView`, `HistoryView`,
+`PaymentDetailView`) with fixed sample data, one state per entry: an open review in its last
+minute, a review blocked by availability, every result display, history offline with its rows kept,
+a refund still pending, and more. They are translated, so German and large text can be reviewed
+without a real order or payment; nothing is sent and nothing is saved.
 
 ## Accessibility conventions
 
@@ -167,6 +175,12 @@ animation in the primitives is the skeleton's gentle opacity pulse (`motion.puls
 Reanimated (already a NativeWind dependency), and it stays still when the system asks for reduced
 motion (`useReducedMotion`). Screen transitions are the native stack's own, which follow the
 platform's reduced-motion setting.
+
+One celebration (Phase 4): the result's icon scales in once (`motion.celebrateMs`, 420 ms, a slight
+overshoot) when, and only when, the server confirmed the payment (`outcomeVisual(...).celebrate`,
+tested). Under reduced motion it simply appears. No haptics: `expo-haptics` would be a new native
+module for one vibration, and Android's vibrator API would ignore the user's touch-feedback
+setting; worth adding with the next native change if wanted.
 
 ## Dependencies
 
@@ -216,6 +230,34 @@ language switch. Diagnostics has a session-only override ("Device language (…)
 "English"; each language named in itself), kept in memory and gone after a relaunch. Implementation
 and platform behaviour: [architecture.md](architecture.md#internationalisation).
 
+## Student screens (Phase 4)
+
+Each screen is a **container** (the existing hooks and rules: the payment authorization binding,
+the scan lock, the history store, the cache-versioned detail reads, navigation) and a **pure view**
+that renders what it is given. The split changed no rule; it made every state renderable from sample
+data. Patterns the screens share:
+
+- **One hero per screen**: Home's brand "Scan to pay" tile; the review's amount to pay
+  (`AmountText display`) with the server's price group and the server-time countdown as `Tag`s (the
+  countdown turns to a warning in the last minute); the result's state icon, words and amount; the
+  detail's status and amount.
+- **The truthful state first**: unfinished payments are listed before anything else on Home and in
+  the history; "Outcome not known yet" has its own question-mark icon, never the paid tick or the
+  declined cross; dates are labelled "Date", not "Paid on", because a declined payment has a date
+  too.
+- **Actions only where the state allows them**: "Pay" only while payable (in the bottom bar, with
+  how it will be confirmed under it); "Check again" and "Send again safely" only for an unknown
+  outcome, the resend waiting for availability; "Try again" only after a decline.
+- **One availability warning**, from the live gate: on the review and the result while it applies,
+  on Home only while payments are actually blocked (not during the first check).
+- **Lists**: `ListRow`s that speak their status; the history grouped by Berlin day ("Today",
+  "Yesterday", weekday and date) in grouped cards, rows memoised on the server's copy of the payment.
+- **Loading, empty, offline**: skeletons in the shape of what is coming plus one spoken loading
+  label; an empty history that offers "Scan to pay"; a failed refresh says so above the rows it
+  keeps.
+- **Large text**: everything wraps; unit prices sit under the dish name so long German words never
+  break inside a word (seen at 200 % before the change).
+
 ## Two apps, one set of primitives
 
 The student app and the till keep identical copies of the primitives (`components/ui/`), the
@@ -231,7 +273,8 @@ The tests live with the student copy only.
 ## Using the system in a screen
 
 1. Wrap the screen in `Screen`; put its one primary action in `footer` (a `BottomActionBar`).
-2. Start with one `Title`; group content in `Card`s or `Section`s; use `Heading` inside them.
+2. A screen with a navigation bar uses its title; a headerless one (`Screen headerless`) starts
+   with one `Title`. Group content in `Card`s or `Section`s; use `Heading` inside them.
 3. Money is `AmountText` (`display` for the amount the screen is about) with the server's cents.
 4. Lists are `ListRow`s inside a `Card`, `separated` after the first row.
 5. Statuses are `StatusPill`s (or `toneIcon` inline) with the server's status in words.
@@ -244,8 +287,8 @@ The tests live with the student copy only.
 9. Every string goes through `t()` with an English and a German entry; screens never offer a
    language switch (the app follows the device; see _Language_).
 
-**Not migrated yet** (screen redesign phases): the screens still use raw Tailwind classes for their
-titles and some rows (`text-2xl` headers, `border-line` dividers in the till's menu and the home
-list), and the payment history rows nest an accessible status pill inside a button: on Android the
-row's spoken label omits the status (observed in the accessibility tree:
-"Mensa am Campus, €7.20, 04/11/2026, 17:03"). `ListRow` exists for exactly this.
+**Not migrated yet** (the till's redesign phase): the till's screens still use raw Tailwind classes
+for their titles and some rows (`text-2xl` headers, `border-line` dividers in the menu), and its
+payment rows nest an accessible status pill inside a button. The student screens were migrated in
+Phase 4; their history rows now speak the status ("Mensa am Campus, Confirmed, €7.20, 17:03 ·
+Kasse 1", seen in the Android accessibility tree).

@@ -885,6 +885,78 @@ Run by the owner: eight smoke checks, all passed. Build 5 was installed over bui
 - German screenshots and the emulator run of the release builds (live language change), not run
   for the reason above.
 
+## Phase 4: the student app redesign (2026-11-05)
+
+Home, Scan, Review, Result, History and Payment detail rebuilt on the design system, in four
+commits. The payment rules did not change: `packages/domain`, `packages/api`, the payment wiring
+(`src/payments/`), local authorization, the outcome mapping and the order hook have no diff
+against `e81b3b5`; `availability.ts` gained one function (Home's notice). Each screen is now a
+container (its existing hooks, guards and navigation, unchanged) and a pure view; see
+[design-system.md](design-system.md), "Student screens (Phase 4)".
+
+### What changed
+
+| Commit    | Screens         | Changes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| --------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `592e5d3` | Home, Scan      | Home without a navigation bar: greeting, the server's price group as a `Tag`, a dominant "Scan to pay" tile, every unfinished payment first (never pushed out), recent results until dismissed (at most 3), the history as a row, quiet account and Diagnostics actions; the availability warning only while payments are blocked. Scan: a framed viewfinder (the frame keeps its place while the camera is off), permission and denied states, the problem with "Scan again", the typed code with a field error. Scan lock, focus and foreground rules unchanged. |
+| `afed4ea` | Review, Result  | Review: merchant header, the amount to pay as the hero with the price group and a server-time countdown (a warning in the last minute), item rows with the server's unit prices, "Pay €…" in the bottom bar with how it is confirmed under it, skeleton loading. Result: a hero per state (its own icon, words and the amount); only a server-confirmed payment scales its tick in, never under reduced motion; actions per state. A development-only screen renders every state from sample data.                                                                 |
+| `f16b36e` | History, Detail | History: grouped by Berlin day ("Today", "Yesterday", weekday and date) in grouped cards, unfinished payments first, rows that speak their status and show server refunds, memoised rows, pull to refresh, explicit paging, skeleton, empty (with "Scan to pay") and offline states that keep the rows. Detail: status and amount hero, price group, date, payment reference, refunds with the server's "can still be refunded", item rows, a server-event timeline.                                                                                               |
+| `fabfdae` | Home, polish    | Home split into container and view (with previews), unit prices under the dish name (a long German word broke mid-word at 200 %), Diagnostics and the shared check cards on the type scale, student build 6.                                                                                                                                                                                                                                                                                                                                                       |
+
+Also: the date label "Paid on" is now "Date" ("Datum"), because a pending or declined payment showed
+"Paid on" too (the till's detail used the same label and now says "Date" as well). Primitive changes,
+copied to the till: `Tag` (new), `ListRow` puts status and subtitle on one wrapping line, the tone
+table is exported. Tokens: `motion.celebrateMs` (420) and `size.icon.hero` (48). No new dependency.
+
+### Tests (+14, 273 in total)
+
+| File                       | Tests                                                                                                                                                                                          |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `home-activity.test.ts`    | every unfinished payment first and newest first; at most a few final results, never as unfinished; the till's records ignored                                                                  |
+| `availability.test.ts`     | Home's notice only while payments are unavailable, never while open or checking, and the same notice as elsewhere                                                                              |
+| `result-visual.test.ts`    | only a confirmed payment celebrates; an unknown outcome never looks paid or declined (tone, icon, title); one icon per display; the countdown text and its warning                             |
+| `history-sections.test.ts` | unfinished first, then Berlin days (23:30 UTC counts for the next Berlin day), Today / Yesterday / dated; rows speak their status in both languages; server refunds in the row; timeline tones |
+| `datetime.test.ts`         | Berlin hours and minutes on a 24-hour clock                                                                                                                                                    |
+
+### Checks (2026-11-05, fresh runs)
+
+| Check                                    | Result     | Notes                                                                                                                                                                                                                                                                                                                                                       |
+| ---------------------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm check`                             | passed     | After each milestone: 263, 267, 273, 273 tests; 35 identical native files                                                                                                                                                                                                                                                                                   |
+| `pnpm bundle:native`                     | passed     | Student Hermes bundle 3.74 → 3.77 MB, till unchanged; no preview screen, sample data, catalogue, test double or finance code in any of the four bundles                                                                                                                                                                                                     |
+| `expo install --check`                   | not needed | No dependency changed                                                                                                                                                                                                                                                                                                                                       |
+| Student release APK (build 6, `fabfdae`) | built      | `mensa-student-1.0.0-6-armeabi-v7a+arm64-v8a-fabfdae.apk`, 50,195,977 bytes (build 5: 50,176,873). Same package, same signing certificate (SHA-256 `fac61745…`), same 6 permissions. SHA-256 of the file: `267f089f5f5f263c65fb4d8ac9e96ba766d29fa71aac81d86ff408cd05e16b07`                                                                                |
+| Upgrade 5 → 6                            | passed     | Emulator: build 5 installed and started, build 6 installed over it (`install -r`), started; Home, Scan, History and a payment detail on live data; Diagnostics shows no development entries                                                                                                                                                                 |
+| Android emulator (headless), Expo Go     | done       | Live data: Home, Scan (permission, camera with the virtual scene, invalid typed code, permanently denied), History, a partly refunded payment's detail. Sample data: every review and result state, Home's unfinished, paused and loading states, history offline, loading and empty, detail with a pending refund, offline and loading. English and German |
+| Larger text                              | done       | 130 % (the Pixel XL's largest) on Home, Scan, review, unknown result, history and detail; 200 % in German on the review and the unknown result. Found and fixed: a mid-word break in a long German dish name                                                                                                                                                |
+| Screen-reader labels (Android tree)      | checked    | History rows: "Mensa am Campus, Confirmed, €7.20, 17:03 · Kasse 1"; items "1 times Salad bar plate, €1.80 each"; timeline "Refund completed, €1.00, 04/11/2026, 11:59"; the order-code field reads its error                                                                                                                                                |
+| Real review, payment and result          | not run    | Needs a live order (a write); no order, payment or refund was made in this phase. The review and result were checked with sample data in their real views; their containers are unchanged                                                                                                                                                                   |
+| A real QR code through the camera        | not run    | The emulator's camera shows a virtual scene; the scan lock and parsing are unchanged and covered by tests                                                                                                                                                                                                                                                   |
+| Reduced motion at runtime                | not run    | By code (`useReducedMotion`); P12 on the device                                                                                                                                                                                                                                                                                                             |
+| TalkBack, VoiceOver, physical devices    | not run    | P1–P13 for the owner                                                                                                                                                                                                                                                                                                                                        |
+
+Screenshots (git-ignored, `.local/phase4-screenshots/`): `before-*` (Home, Scan, History, detail,
+the review's "order not found" and Phase 2's expired review; no Result: it needs a real payment
+action), `after-*` (live and sample-data states, English and German, 130 % and 200 %) and
+`release-*` (build 6).
+
+### Performance and accessibility notes
+
+- History: a `SectionList`; sections are recomputed only when the list or a cached payment changes;
+  each row is memoised on the server's copy of its payment, so a page load or a pending payment
+  turning confirmed re-renders only what changed. "Today" is read once when the screen opens.
+- The success animation runs on the UI thread (Reanimated) and only once; nothing else animates
+  besides the skeleton pulse. No timers were added; the countdown uses the existing server clock.
+- Every status is words plus an icon; rows and timeline events are one phrase each; the pay note is
+  hidden from screen readers because the button's hint says the same; announcements are unchanged
+  (one per change, focused screen only).
+
+### Remaining
+
+- The owner's Pixel XL pass P1–P13 ([manual-tests.md](manual-tests.md)), including one real payment.
+- The emulator was run headless (`-no-window`) after its window was closed twice in Phase 3, and its
+  DNS stopped resolving once after a long pause (restarted with explicit DNS servers).
+
 ## Manual steps
 
 1. **pnpm on PATH**: `corepack enable pnpm` (undo: `corepack disable pnpm`), or prefix commands with
@@ -895,8 +967,8 @@ Run by the owner: eight smoke checks, all passed. Build 5 was installed over bui
    Metro. It is public mock data, inlined into the apps and the dashboard.
 3. **Pixel XL (student)**: enable USB debugging; `adb devices -l`;
    `adb shell getprop ro.product.cpu.abilist` (expect `arm64-v8a,…`); then
-   `adb -s <serial> install -r artifacts/android/mensa-student-1.0.0-5-armeabi-v7a+arm64-v8a-1c48f3c.apk`
-   (build 5, Phase 3). It replaces an earlier build in place and keeps its data. Set a PIN and enrol
+   `adb -s <serial> install -r artifacts/android/mensa-student-1.0.0-6-armeabi-v7a+arm64-v8a-fabfdae.apk`
+   (build 6, Phase 4). It replaces an earlier build in place and keeps its data. Set a PIN and enrol
    a fingerprint, then follow [manual-tests.md](manual-tests.md).
 4. **iPad (till)**: development build once with
    `pnpm --filter @mensa/till exec expo run:ios --device --port 8082`, then `pnpm till` (Metro 8082)
@@ -918,9 +990,9 @@ Run by the owner: eight smoke checks, all passed. Build 5 was installed over bui
 
 ## Remaining for stage 5: submission
 
-1. The UI polish phases agreed on 2026-11-04: the design system (Phase 2) and sign-in with the
-   device language (Phase 3, awaiting the owner's review) are done; the student and till screens
-   follow, each with its own checks.
+1. The UI polish phases agreed on 2026-11-04: the design system (Phase 2), sign-in with the device
+   language (Phase 3) and the student screens (Phase 4, awaiting the owner's review and P1–P13) are
+   done; the till screens and the final release phase follow.
 2. Device checks not run yet: TalkBack, VoiceOver, maximum font sizes, N6 with a genuinely
    unresolved payment, and the other rows listed under "Not run on a device"; the dashboard's D1–D4.
 3. Final read-through of the README and [design.md](design.md); invite the reviewers; rehearse the
