@@ -3,6 +3,100 @@
 For walking through the code and changing it live. Each recipe names the files to touch and the
 command that proves the change.
 
+## The 45-minute call
+
+### 10 minutes: a payment while conditions change
+
+Devices: the till on the iPad (or an Android emulator with the till APK), the student app on the
+Pixel XL. One order, one payment; each step says what the screen proves.
+
+1. **Ring up and scan.** Till: two dishes → "Create order and show QR code". The till shows the
+   server's total per price group, never its own sum. Pixel: "Scan to pay" → the review shows the
+   amount **for this payer's price group**, from the server (`order.amountCents`).
+2. **Payments switched off or no connection** (airplane mode on the Pixel while the review is open):
+   one availability notice, no "Pay"; nothing can be sent because the gate fails closed. Airplane
+   mode off: "Pay" comes back by itself (connectivity hint → fresh `GET /config`, newest read wins).
+3. **Cancel the fingerprint**: "Not paid"; nothing was sent, the till still waits.
+4. **Pay**: "Payment is being checked" (pending is not paid), then "Paid" on both devices, with
+   the same amount and price group.
+5. **The lost response, deterministically.** A real lost response cannot be produced on demand on
+   a device, so show it in the simulated server, where it is exact:
+   `pnpm exec tsx --test --test-name-pattern="response was lost" packages/domain/src/intent-controller.test.ts`.
+   Walk through the test: the server applies the payment and drops the answer → the intent is
+   `unknown` → "Send again safely" resends **the same key and body** → the server replays the
+   original payment → one payment exists.
+6. **Refund** on the till: €1.00 with a reason → explicit confirmation → completed; the student's
+   history shows "€1.00 refunded".
+
+What to say while doing it:
+
+- **Why a timeout is not a decline.** The request may have reached the server and been applied
+  after the answer was lost. "Declined" would invite a second payment; "paid" could be false. So the
+  app says "not known yet", offers a read and a deduplicated resend, and never decides by itself.
+- **Idempotency and SecureStore.** One key per user action, saved with the exact body in Expo
+  SecureStore **before** the request leaves; every retry reuses both; the server returns the
+  original result for a repeated key within 24 hours; the app stops resending after 23 hours by
+  server time and only reads.
+- **Server-authoritative prices and roles.** The QR names the order, not an amount. The server
+  prices the order by the authenticated payer's group; the app sends back the amount it showed, so a
+  changed price is refused (`amount_mismatch`), never silently charged. Each app accepts only its
+  own roles before a session appears; the server enforces permissions anyway.
+
+### 20 minutes: a changed requirement, two rehearsals
+
+**Rehearsal A: a refund over €5.00 needs a reason of at least three characters (till).**
+
+1. `apps/till/src/till-rules.ts`: add `checkRefundReason(reason, cents)` next to
+   `checkRefundAmount` (returns `{ ok }` or an error key).
+2. `apps/till/src/screens/PaymentDetailScreen.tsx`, `RefundPanel`: compute it, pass its error to
+   the reason `TextField`, and enable "Check refund" only when both checks pass. Keep the rule in
+   `till-rules.ts`, not in the view.
+3. `packages/shared/src/i18n/messages.ts`: the error text in `en` and `de` (typecheck fails until
+   both exist).
+4. `apps/till/src/till-rules.test.ts`: €5.00 without a reason is fine, €5.01 with "ab" is refused,
+   "abc" passes. Then `pnpm test` and check it in "Till screen states" (`TillStatesScreen.tsx`,
+   `refund-form`).
+5. Talking point: the domain still validates the reason's 200-character maximum; the new rule is a
+   product rule at the edge, and the server remains the authority on amounts.
+
+**Rehearsal B: a fully refunded payment reads "Refunded" in the history (student and till).**
+
+1. `apps/student/src/history-sections.ts`, `paymentRowText`: when `refundedAmountCents` equals
+   `amountCents`, add a "Refunded" note (the server's figures; no client sum).
+2. Copy the file to `apps/till/src/history-sections.ts` (only the header comment differs;
+   `pnpm check:copies` fails otherwise).
+3. `messages.ts`: `en` and `de`.
+4. `apps/student/src/history-sections.test.ts`: a fully refunded payment's row says it in both
+   languages; a partly refunded one does not. `pnpm test && pnpm check:copies`.
+
+Both touch no payment rule. If a requirement does touch one (a new error code, the replay window,
+the polling rhythm), the recipes under "Live-change recipes" name the file and the test.
+
+### 15 minutes: code and decisions
+
+Use "Code map" below, then "Follow one payment through the code". The decisions most likely to be
+asked about are under "Likely questions".
+
+## Code map
+
+| Question                               | File                                                                                                                  |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Where does every request go?           | `packages/api/src/transport.ts`, `client.ts`, `schemas.ts`                                                            |
+| What does one write attempt prove?     | `packages/domain/src/write-outcome.ts`                                                                                |
+| The intent record and its states       | `packages/domain/src/intent.ts` (`paymentDisplay`, `replayPermission`)                                                |
+| Start, save, send, settle, read        | `packages/domain/src/intent-controller.ts`                                                                            |
+| Biometric binding                      | `packages/domain/src/payment-authorization.ts`, `apps/student/src/local-auth.ts`                                      |
+| Re-login without account crossover     | `packages/domain/src/session.ts`, `sign-in.ts`                                                                        |
+| Kill switch, minimum version, recovery | `packages/domain/src/payment-gate.ts`, `gate-recovery.ts`, `app-version.ts`                                           |
+| Newest version wins                    | `packages/domain/src/resource-cache.ts`, `versioning.ts`                                                              |
+| Server time                            | `packages/domain/src/server-clock.ts`                                                                                 |
+| Saved intents on the device            | `apps/*/src/payments/secure-intent-store.ts`, `PaymentServices.tsx`                                                   |
+| The failure scenarios                  | `packages/domain/src/intent-controller.test.ts`, `testing/fake-server.ts`                                             |
+| Student screens (container + view)     | `apps/student/src/screens/` (`ReviewScreen.tsx`, `ResultScreen.tsx`, `HistoryScreen.tsx`)                             |
+| Till screens                           | `apps/till/src/screens/CheckoutScreen.tsx`, `components/ActiveOrder.tsx`, `screens/PaymentDetailScreen.tsx`           |
+| Every screen state from sample data    | `apps/student/src/screens/PaymentStatesScreen.tsx`, `apps/till/src/screens/TillStatesScreen.tsx` (development builds) |
+| Finance                                | `packages/domain/src/finance/`, `apps/dashboard/src/`                                                                 |
+
 ## Reading order (about 20 minutes)
 
 1. `package.json`, `pnpm-workspace.yaml`: workspace layout, pinned pnpm, every root command.
@@ -58,8 +152,9 @@ The live payment of 2026-11-01 (staff, €5.80, `pay_90d914f2be37a714`) took thi
    through `putPaymentDetail`; `withPayment` keeps the higher version (`confirmed v2`).
 9. **Result** (`ResultScreen.tsx`): `useControllerRevision` re-renders on the change; `describeOutcome`
    (from `paymentDisplay`) says "Paid" only for `confirmed`; the screen reader hears it once.
-10. **Till** (`apps/till/src/screens/CheckoutScreen.tsx`): its own controller polls the order intent
-    (`paying v2` → `paid v3`); `PaidResult` reads the payment for the payer's amount and price group.
+10. **Till** (`apps/till/src/components/ActiveOrder.tsx`, shown by `CheckoutScreen.tsx`): its own
+    controller polls the order intent (`paying v2` → `paid v3`); the paid card reads the payment for
+    the payer's amount and price group.
 
 ## Four walkthroughs
 
@@ -301,14 +396,18 @@ different peer set, crashes at runtime. Do not import it from the dashboard.
   about a minute with `unauthorized`, not `session_expired` (`docs/api-notes.md`).
 - _Why do the till's columns set `importantForAccessibility`?_ Without it, Android sorted the contents
   of both columns by position, which put "Create order" between two dishes in the accessibility tree.
-- _Why Expo SDK 54, not 58?_ This Mac's Xcode 26.1.1; SDK 55+ needs Xcode 26.2–26.4+ (README).
+- _Why Expo SDK 54, not a newer one?_ It was the newest SDK the Mac's Xcode (then 26.1.1) could build
+  when the project started; it is still patched, and an SDK upgrade during the review would risk
+  native regressions for no user-visible gain. The Mac now has Xcode 26.6, so an upgrade is possible
+  as its own change.
 - _Why do the native apps list `react-native-css-interop` and `@babel/plugin-transform-react-jsx`?_
   NativeWind relies on hoisting; pnpm's isolated layout makes those dependencies explicit
   (architecture notes, point 3).
 - _Is the candidate ID a secret?_ No: a data namespace, embedded in every client build.
-- _What is verified on devices?_ The tables in `docs/progress.md`. The tests run against a simulated
-  server; the app runs were on an Android emulator with release builds and in Expo Go, not on a
-  physical phone; no screen reader has been run.
+- _What is verified on devices?_ The tables in `docs/progress.md`: the core payment, refund, offline
+  and session flows on a Pixel XL, an iPad A16 and an iPhone 17 Pro, and the Phase 3–5 acceptance
+  checks. Lost responses and restarts with unresolved payments are verified against the simulated
+  server, not on a device. TalkBack and VoiceOver are still to run on the devices.
 - _Why are the daily totals not added up from the payment list?_ The report counts refunds on the
   day they completed, which a payment list cannot show, and the list is paged. The report response is
   the source; the browser check compares every row with it.
