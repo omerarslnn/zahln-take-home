@@ -9,12 +9,18 @@ import {
 } from '@mensa/shared';
 import { useI18n } from '@mensa/shared/react';
 import { useState } from 'react';
+import { Icon } from '../components/Icon';
 import {
   Button,
+  ButtonLink,
+  cardClass,
   FOCUS,
   Money,
   Notice,
+  PageActions,
   Section,
+  Skeleton,
+  StatCard,
   TableScroll,
   td,
   tdNumber,
@@ -27,8 +33,6 @@ import { readFailureKey } from '../finance/text';
 import { useServerNow } from '../finance/useServerNow';
 import { routeHref } from '../routing';
 import { navigate } from '../useHashRoute';
-
-const secondaryLink = `inline-flex min-h-touch items-center rounded-control border-2 border-brand bg-surface px-4 font-semibold text-brand ${FOCUS}`;
 
 /**
  * Daily totals straight from GET /reports/daily-totals for one Berlin day: overall, per mensa and
@@ -44,61 +48,83 @@ export function ReportPage({ day }: { day: string | null }) {
   // Until the store has switched to the selected day, show nothing of the previous one.
   const current = state.day === selected ? state : null;
 
+  const { t } = useI18n();
   return (
     <>
+      <PageActions>
+        <Button tone="secondary" icon="refresh" busy={current?.loading} onClick={refresh}>
+          {current?.loading ? t('finance.loading') : t('finance.refresh')}
+        </Button>
+      </PageActions>
       <DayPicker key={selected} day={selected} />
       {current ? <ReportStatus state={current} onRefresh={refresh} /> : null}
-      {current?.latest ? <ReportTotals report={current.latest.report} /> : null}
+      {current?.latest ? (
+        <ReportTotals report={current.latest.report} />
+      ) : current?.loading || !current ? (
+        <TotalsLoading />
+      ) : null}
       <HowCounted />
     </>
   );
 }
 
 function DayPicker({ day }: { day: string }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [draft, setDraft] = useState(day);
   const valid = parseCalendarDay(draft) !== null;
   return (
     <form
-      className="flex flex-wrap items-end gap-3 rounded-card bg-surface p-4 shadow-sm"
+      aria-labelledby="report-day-title"
+      className={`${cardClass} flex flex-wrap items-end justify-between gap-4 p-5`}
       onSubmit={(event) => {
         event.preventDefault();
         if (valid) navigate(routeHref({ page: 'report', day: draft }));
       }}
     >
-      <div className="flex flex-col gap-1">
-        <label htmlFor="report-day" className="text-sm font-semibold">
-          {t('finance.report.day')}
-        </label>
-        <input
-          id="report-day"
-          type="date"
-          required
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          aria-describedby="report-day-hint"
-          className={`min-h-touch rounded-control border-2 border-line bg-surface px-3 ${FOCUS}`}
-        />
+      <div className="flex items-center gap-3">
+        <span className="flex h-10 w-10 items-center justify-center rounded-control bg-brand-subtle text-brand">
+          <Icon name="calendar" />
+        </span>
+        <div>
+          <p className="text-caption font-semibold text-ink-muted">
+            {t('finance.report.selected')}
+          </p>
+          <h2 id="report-day-title" className="text-headline font-semibold text-ink">
+            {formatCalendarDay(day, locale)}
+          </h2>
+        </div>
       </div>
-      <Button type="submit" disabled={!valid}>
-        {t('finance.report.show')}
-      </Button>
-      <a
-        href={routeHref({ page: 'report', day: addCalendarDays(day, -1) })}
-        className={secondaryLink}
-      >
-        {t('finance.report.previous')}
-      </a>
-      <a
-        href={routeHref({ page: 'report', day: addCalendarDays(day, 1) })}
-        className={secondaryLink}
-      >
-        {t('finance.report.next')}
-      </a>
-      <a href="#/report" className={secondaryLink}>
-        {t('finance.report.today')}
-      </a>
-      <p id="report-day-hint" className="w-full text-sm text-ink-muted">
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="flex flex-col gap-1">
+          <label htmlFor="report-day" className="text-caption font-semibold text-ink">
+            {t('finance.report.day')}
+          </label>
+          <input
+            id="report-day"
+            type="date"
+            required
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            aria-describedby="report-day-hint"
+            className={`min-h-touch rounded-control border-2 border-line bg-surface px-3 text-ink ${FOCUS}`}
+          />
+        </div>
+        <Button type="submit" disabled={!valid}>
+          {t('finance.report.show')}
+        </Button>
+        <ButtonLink
+          href={routeHref({ page: 'report', day: addCalendarDays(day, -1) })}
+          icon="chevronLeft"
+        >
+          {t('finance.report.previous')}
+        </ButtonLink>
+        <ButtonLink href="#/report">{t('finance.report.today')}</ButtonLink>
+        <ButtonLink href={routeHref({ page: 'report', day: addCalendarDays(day, 1) })}>
+          {t('finance.report.next')}
+          <Icon name="chevronRight" />
+        </ButtonLink>
+      </div>
+      <p id="report-day-hint" className="w-full text-caption text-ink-muted">
         {t('finance.report.dayHint')}
       </p>
     </form>
@@ -109,7 +135,7 @@ function ReportStatus({ state, onRefresh }: { state: DailyReportState; onRefresh
   const { t, locale } = useI18n();
   const fetched = state.latest ? formatBerlinTime(state.latest.fetchedAt, locale) : null;
   const refreshButton = (
-    <Button tone="secondary" busy={state.loading} onClick={onRefresh}>
+    <Button tone="secondary" icon="refresh" busy={state.loading} onClick={onRefresh}>
       {state.loading ? t('finance.loading') : t('finance.refresh')}
     </Button>
   );
@@ -133,8 +159,9 @@ function ReportStatus({ state, onRefresh }: { state: DailyReportState; onRefresh
     );
   }
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <p role="status" className="text-sm text-ink-muted">
+    <div className="flex items-center gap-2 text-caption text-ink-muted">
+      <Icon name="pending" size={16} />
+      <p role="status">
         {state.loading && !fetched
           ? t('finance.report.loading')
           : state.loading && fetched
@@ -143,7 +170,6 @@ function ReportStatus({ state, onRefresh }: { state: DailyReportState; onRefresh
               ? t('finance.report.fetched', { time: fetched })
               : ''}
       </p>
-      {refreshButton}
     </div>
   );
 }
@@ -153,46 +179,54 @@ function ReportTotals({ report }: { report: DailyTotals }) {
   const dayText = formatCalendarDay(report.date, locale);
   const quiet =
     report.paymentCount === 0 && report.refundedCents === 0 && report.pendingCount === 0;
+  const negative = report.netCents < 0;
 
   return (
     <>
       <dl
         aria-label={t('finance.report.summary', { day: dayText })}
-        className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
+        className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
       >
-        <Figure
+        <StatCard
           label={t('finance.report.gross')}
-          cents={report.grossCents}
+          icon="gross"
+          value={<Money cents={report.grossCents} />}
           detail={t('finance.report.grossDetail', { count: report.paymentCount })}
         />
-        <Figure
+        <StatCard
           label={t('finance.report.refunded')}
-          cents={report.refundedCents}
+          icon="refund"
+          value={<Money cents={report.refundedCents} />}
           detail={t('finance.report.refundedDetail')}
         />
-        <Figure
+        <StatCard
           label={t('finance.report.net')}
-          cents={report.netCents}
-          detail={t(
-            report.netCents < 0 ? 'finance.report.netNegative' : 'finance.report.netDetail',
-          )}
+          icon="net"
+          value={
+            <span className={negative ? 'text-danger' : ''}>
+              <Money cents={report.netCents} />
+            </span>
+          }
+          detail={t(negative ? 'finance.report.netNegative' : 'finance.report.netDetail')}
+          tag={negative ? { key: 'finance.report.negative', tone: 'error' } : undefined}
         />
-        <Figure
+        <StatCard
           label={t('finance.report.pending')}
-          cents={report.pendingCents}
+          icon="pending"
+          value={<Money cents={report.pendingCents} />}
           detail={t('finance.report.pendingDetail', { count: report.pendingCount })}
         />
       </dl>
       {quiet ? (
         <Notice tone="neutral" role="none" title={t('finance.report.quiet', { day: dayText })} />
       ) : null}
-      <Section id="report-places" title={t('finance.report.byPlace')}>
+      <Section id="report-places" title={t('finance.report.byPlace')} flush>
         <TableScroll label={t('finance.report.byPlace')}>
           <table className="w-full min-w-[46rem] border-collapse">
             <caption className="sr-only">{t('finance.report.caption', { day: dayText })}</caption>
             <thead>
               <tr>
-                <th scope="col" className={`${th} sticky left-0 bg-surface`}>
+                <th scope="col" className={`${th} sticky left-0`}>
                   {t('finance.report.col.place')}
                 </th>
                 <th scope="col" className={thNumber}>
@@ -217,19 +251,20 @@ function ReportTotals({ report }: { report: DailyTotals }) {
             </thead>
             {report.mensas.map((mensa) => (
               <tbody key={mensa.mensa.id}>
-                <TotalsRow label={mensa.mensa.name} totals={mensa} strong />
+                <TotalsRow label={mensa.mensa.name} totals={mensa} level="mensa" />
                 {mensa.tills.map((till) => (
                   <TotalsRow
                     key={till.till.id}
                     label={till.till.name}
                     context={mensa.mensa.name}
                     totals={till}
+                    level="till"
                   />
                 ))}
               </tbody>
             ))}
             <tfoot>
-              <TotalsRow label={t('finance.report.allMensas')} totals={report} strong />
+              <TotalsRow label={t('finance.report.allMensas')} totals={report} level="total" />
             </tfoot>
           </table>
         </TableScroll>
@@ -240,37 +275,45 @@ function ReportTotals({ report }: { report: DailyTotals }) {
 
 type Totals = Omit<TillTotals, 'till'>;
 
+const ROW_LOOK = {
+  mensa: { row: 'bg-canvas', head: 'bg-canvas font-semibold text-ink', strong: true },
+  till: { row: '', head: 'bg-surface pl-10 font-normal text-ink', strong: false },
+  total: { row: 'border-t-2 border-line', head: 'bg-surface font-bold text-ink', strong: true },
+} as const;
+
 function TotalsRow({
   label,
   context,
   totals,
-  strong = false,
+  level,
 }: {
   label: string;
   /** The mensa of a till row, for screen readers: several mensas have a "Kasse 1". */
   context?: string;
   totals: Totals;
-  strong?: boolean;
+  level: keyof typeof ROW_LOOK;
 }) {
+  const look = ROW_LOOK[level];
+  const net = totals.netCents < 0 ? 'text-danger' : '';
   return (
-    <tr className={strong ? 'bg-canvas' : ''}>
+    <tr className={look.row}>
       <th
         scope="row"
         // Sticky, so the mensa or till stays in view while a narrow screen scrolls the figures.
-        className={`${td} sticky left-0 text-left ${strong ? 'bg-canvas font-semibold' : 'bg-surface pl-8 font-normal'}`}
+        className={`${td} sticky left-0 text-left ${look.head}`}
       >
         {label}
         {context ? <span className="sr-only"> ({context})</span> : null}
       </th>
       <td className={tdNumber}>{totals.paymentCount}</td>
       <td className={tdNumber}>
-        <Money cents={totals.grossCents} strong={strong} />
+        <Money cents={totals.grossCents} strong={look.strong} />
       </td>
       <td className={tdNumber}>
         <Money cents={totals.refundedCents} />
       </td>
-      <td className={tdNumber}>
-        <Money cents={totals.netCents} strong={strong} />
+      <td className={`${tdNumber} ${net}`}>
+        <Money cents={totals.netCents} strong={look.strong} />
       </td>
       <td className={tdNumber}>{totals.pendingCount}</td>
       <td className={tdNumber}>
@@ -280,14 +323,17 @@ function TotalsRow({
   );
 }
 
-function Figure({ label, cents, detail }: { label: string; cents: number; detail: string }) {
+/** The four figures' places while the first copy of a day is on its way (no numbers, no zeros). */
+function TotalsLoading() {
   return (
-    <div className="rounded-card bg-surface p-4 shadow-sm">
-      <dt className="text-sm text-ink-muted">{label}</dt>
-      <dd className="mt-1 text-2xl font-bold">
-        <Money cents={cents} />
-      </dd>
-      <dd className="mt-1 text-sm text-ink-muted">{detail}</dd>
+    <div aria-hidden="true" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {[0, 1, 2, 3].map((card) => (
+        <div key={card} className={`${cardClass} space-y-3 p-5`}>
+          <Skeleton className="h-4 w-1/2" />
+          <Skeleton className="h-8 w-2/3" />
+          <Skeleton className="h-3 w-3/4" />
+        </div>
+      ))}
     </div>
   );
 }
@@ -296,11 +342,22 @@ function HowCounted() {
   const { t } = useI18n();
   return (
     <Section id="report-how" title={t('finance.report.howTitle')}>
-      <ul className="list-disc space-y-1 pl-5">
-        <li>{t('finance.report.howPayments')}</li>
-        <li>{t('finance.report.howRefunds')}</li>
-        <li>{t('finance.report.howPending')}</li>
-        <li>{t('finance.report.howFetched')}</li>
+      <ul className="grid gap-3 md:grid-cols-2">
+        {(
+          [
+            'finance.report.howPayments',
+            'finance.report.howRefunds',
+            'finance.report.howPending',
+            'finance.report.howFetched',
+          ] as const
+        ).map((key) => (
+          <li key={key} className="flex gap-3 text-ink">
+            <span className="mt-0.5 text-brand">
+              <Icon name="info" size={18} />
+            </span>
+            <span>{t(key)}</span>
+          </li>
+        ))}
       </ul>
     </Section>
   );
