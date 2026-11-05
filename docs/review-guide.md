@@ -212,17 +212,26 @@ range equal that day's report (223 payments, €811.60).
 
 ### 4. A CSV export across pages
 
-1. "Export all matching payments" → `useExport.start(filter)` captures the filter (its key and query).
+1. "Export CSV" (next to the Payments heading) → `useExport.start(filter)` captures the applied
+   filter (its key and query); the button is busy until the export ends, so exports never overlap.
 2. `collectPayments` (`packages/domain/src/finance/payment-export.ts`) asks for 200 per page and
    follows `nextCursor` until it is null. A repeated cursor, an empty page that still points onward,
    or a page that fails after the finance API's three attempts ends the export with no file; so does
    a cancel, a new filter or a new session. Pages that overlap are merged by ID, keeping the highest
    version; the result is sorted newest first, then by ID.
 3. `paymentsToCsv`: fixed columns, raw cents, ISO times, UTF-8 with BOM, CRLF, RFC 4180 quoting and
-   formula neutralisation; `downloadText` saves it and revokes the object URL.
+   formula neutralisation.
+4. Delivery (`apps/dashboard/src/finance/hooks.ts`): the file is saved at once only while the click
+   that started the export still counts as a user action (`navigator.userActivation.isActive`);
+   otherwise the page says "Export ready" and offers "Save CSV file". A full export takes long
+   enough for that click to expire, and a download the page starts by itself can then be held back
+   by the browser ("download multiple files") while the page would claim it was saved. A file that
+   cannot be created is a failure with "Try again", never a success.
 
-Evidence: `payment-export.test.ts`, `payment-csv.test.ts`; live, 5,582 payments in 28 pages, equal to
-an independent traversal.
+Evidence: `payment-export.test.ts`, `payment-csv.test.ts`; the browser check exercises the visible
+action: a quick export saved at once, a long one held until "Save CSV file", cancellation, a filter
+change, a failed page, and the full file (5,596 payments in 28 pages) against an independent
+traversal.
 
 ## Native concepts, mapped
 

@@ -296,6 +296,40 @@ sample data in **Till screen states** (Diagnostics, development builds only). Pa
   shrink their window for it), so the refund amount, the reason and "Check refund" stay reachable on
   a phone.
 
+## Finance dashboard (Phase 7)
+
+The dashboard uses the same tokens through the shared Tailwind preset and the native apps'
+contrast-tested colour pairings; its primitives live in `apps/dashboard/src/components/ui.tsx`.
+
+- **Shell**: a white header with the brand mark (a blue tile, as in the apps), the signed-in
+  account, the DE/EN segmented switch and "Sign out"; tabs with icons (Daily totals, Payments, Needs
+  attention), the current one in brand blue with an underline (a payment's detail highlights the
+  list it came from); the tabs scroll sideways on a phone. A skip link leads to the page heading.
+- **Page header**: the heading (`text-title`), one line of description, and the page's actions on
+  the right (`PageActions`, a portal into the header), first after the heading in Tab order:
+  "Refresh" on the report and the detail, "Export CSV" on Payments, "Filter or export these in
+  Payments" on Needs attention.
+- **Cards** (`cardClass`, `Section`): white, hairline border, a light shadow, a headline-size title
+  with an optional description; tables run to the card's edges (`flush`). `StatCard` shows a key
+  figure with an icon tile, the amount at title size and one line of context.
+- **Status**: `StatusBadge` pills and `Notice` banners use tone-subtle backgrounds, tone-line borders
+  and tone-strong text, each with a glyph, so no status is colour alone. A negative net is shown in
+  the danger colour with its minus sign and a "Negative" tag.
+- **Tables**: an uppercase caption-size header row on the canvas tint, tabular figures aligned
+  right, hairline rows, a hover tint on rows that lead somewhere, a captioned table with row
+  headers; on a phone the payment list becomes cards. Wide tables scroll inside a focusable, named
+  region, so the page itself never scrolls sideways (checked at 390, 640 and 720 px).
+- **Export**: the "Export CSV" button in the page header, described by the applied-filters note
+  ("…across all pages, not only the rows loaded below"); one panel under the header for progress
+  (with "Cancel export"), "Export ready" / "Export complete" with the file name, the count and
+  "Save CSV file" / "Save again", a failure with "Try again", or a cancellation; one visually hidden
+  live region announces the start and the outcome once each.
+- **Loading**: skeletons in the shape of the figures and rows (hidden from screen readers) next to
+  one spoken loading text; spinners and skeletons stop under reduced motion.
+- **Icons**: a dozen inline line icons (`Icon.tsx`, no library), always decorative.
+- Targets are at least 48 px; every control shows the brand focus ring; the export's counts use the
+  reader's number format (5,595 / 5.595).
+
 ## Two apps, one set of primitives
 
 The student app and the till keep identical copies of the primitives (`components/ui/`), the

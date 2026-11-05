@@ -445,7 +445,10 @@ longer shrinks for the keyboard, so without padding a field near the bottom stay
 - **Filters** (`apps/dashboard/src/finance/filters.ts`): only active filters are serialised, to the
   address and to the query. Berlin days become instants with offset (`berlinDayBound`): the first
   day's midnight inclusive, the midnight after the last day exclusive.
-- **Export** (`collectPayments`, `paymentsToCsv`): see the walkthrough in the review guide.
+- **Export** (`collectPayments`, `paymentsToCsv`, `useExport`): see the walkthrough in the review
+  guide. The finished file is downloaded at once only while the starting click is recent; otherwise
+  the person saves it with "Save CSV file", so the download is never started behind the person's
+  back and the page never claims a file the browser did not get.
 - **Routing**: hash routes (`#/…`), so any static host serves deep links without rewrite rules;
   focus moves to the page heading when the page changes.
 

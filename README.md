@@ -11,8 +11,8 @@ deliberately unreliable mock API (`https://dev.zahln.de`):
   countdown, follow it to paid or expired, and refund in full or in part with an explicit
   confirmation and a clear refusal when refunding is not allowed.
 - **Finance dashboard** (React + Vite, web): Berlin daily totals per mensa and till, payments that
-  need attention, search and filters with the full history of each payment, and a CSV export of
-  every matching payment.
+  need attention, search and filters with the full history of each payment, and **Export CSV** on
+  the Payments page: every payment matching the applied filters, read across all pages.
 
 German and English on every screen. **Money never moves twice and no screen shows an untrue
 result**: every write is a saved intent with one idempotency key, a timeout is "not known yet"
@@ -59,6 +59,13 @@ There is no registration or password reset: the API cannot create users.
 3. Both show "being checked", then "Paid" with the same amount and price group.
 4. Till: "Payments and refunds" → the payment → refund an amount → confirm. The student's history
    shows the refund.
+
+**A CSV export** (dashboard): Payments → set filters → "Apply filters" → **Export CSV** (top right,
+next to the heading). The panel under the heading shows the progress with "Cancel export". A quick
+export downloads at once; a longer one ends with "Export ready" and a **Save CSV file** button,
+because browsers may hold back a download a page starts by itself long after the click. The file
+holds every matching payment across all pages, in integer cents, with a byte-order mark for
+spreadsheets and formula-like text neutralised.
 
 ### Install the Android apps
 
@@ -124,14 +131,14 @@ dependency change). If Expo CLI writes `ios.appleTeamId` into an `app.json`, do 
 
 Results as of 2026-11-05 (details and earlier rounds: [docs/progress.md](docs/progress.md)).
 
-| Kind                                | Result                                                                                                                                                                                                                                                                                                    |
-| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Automated                           | `pnpm check` passes: formatting, type-aware lint, types in 6 workspaces, **282 tests** (domain rules against a simulated server that loses responses, times out, refuses and replays), single React/NativeWind instances, identical shared native files, dashboard build                                  |
-| Dashboard, deployed URL             | `pnpm dashboard:browser-check` **40/40** on https://zahln-mensa-dashboard-4ft.pages.dev/: figures equal to the API, filters, paging, complete CSV export, German, phone width, deep links, sign-out, CORS, and a keyboard-only pass with focus indicators                                                 |
-| Android release builds (emulator)   | Student 7 installs over build 6 keeping its data, starts without Metro, signs in, history and refunds; till 6 likewise over build 5; manifests, permissions, signing and the absence of development code checked                                                                                          |
-| iOS                                 | Release builds of both apps for the iOS simulator from a fresh prebuild: built, installed and started (English and German, Face ID and camera texts in the bundle); device builds are development builds from source                                                                                      |
-| Physical devices (run by the owner) | Pixel XL (Android 10), iPad A16, iPhone 17 Pro: payments with fingerprint and Face ID, cancelled authorization, refunds, expiry, offline recovery, German, larger text, keyboard                                                                                                                          |
-| **Not yet run**                     | **TalkBack and VoiceOver on the devices**: the screen-reader pay flow is built for them and checked in the Android accessibility tree, but not yet with a screen reader on a device. Also: a real lost response and a force-stop with an unresolved payment (both covered by simulated-server tests only) |
+| Kind                                | Result                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Automated                           | `pnpm check` passes: formatting, type-aware lint, types in 6 workspaces, **282 tests** (domain rules against a simulated server that loses responses, times out, refuses and replays), single React/NativeWind instances, identical shared native files, dashboard build                                                                                                                                                                                                                                                                           |
+| Dashboard, deployed URL             | `pnpm dashboard:browser-check` **44/44** on https://zahln-mensa-dashboard-4ft.pages.dev/: figures equal to the API, filters, paging, German, phone width, deep links, sign-out, CORS, a keyboard-only pass with focus indicators, and the CSV export through its visible button: a quick export saved at once, a long one offered with "Save CSV file", the full file equal to an independent traversal, cancellation, a filter change and a failed page (no file). A downloaded file parses as CSV: 19 columns, every row complete, integer cents |
+| Android release builds (emulator)   | Student 7 installs over build 6 keeping its data, starts without Metro, signs in, history and refunds; till 6 likewise over build 5; manifests, permissions, signing and the absence of development code checked                                                                                                                                                                                                                                                                                                                                   |
+| iOS                                 | Release builds of both apps for the iOS simulator from a fresh prebuild: built, installed and started (English and German, Face ID and camera texts in the bundle); device builds are development builds from source                                                                                                                                                                                                                                                                                                                               |
+| Physical devices (run by the owner) | Pixel XL (Android 10), iPad A16, iPhone 17 Pro: payments with fingerprint and Face ID, cancelled authorization, refunds, expiry, offline recovery, German, larger text, keyboard, and **TalkBack and VoiceOver** on the pay flow and the till                                                                                                                                                                                                                                                                                                      |
+| Not run on a device                 | A real lost response and a force-stop with an unresolved payment (both covered by simulated-server tests; the matrix in `docs/manual-tests.md` has safe device versions)                                                                                                                                                                                                                                                                                                                                                                           |
 
 ## What was deliberately not built
 
@@ -190,7 +197,8 @@ Every live write made during development is listed in
 ## Dashboard deployment
 
 Cloudflare Pages project `zahln-mensa-dashboard`, production branch `main`, by direct upload of a
-local build; the served files are byte-identical to a build of `4fe08aa` (checked 2026-11-05).
+local build; the served files are byte-identical to a build of `6ff2308`, the redesigned dashboard
+(checked 2026-11-05).
 Routes live after `#`, so deep links and reloads need no rewrite rules; the API allows any origin.
 
 ```sh
