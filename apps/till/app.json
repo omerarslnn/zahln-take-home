@@ -12,7 +12,7 @@
     "ios": {
       "bundleIdentifier": "dev.omerarslan.mensa.till",
       "supportsTablet": true,
-      "buildNumber": "5"
+      "buildNumber": "6"
     },
     "android": {
       "package": "dev.omerarslan.mensa.till",
@@ -20,7 +20,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0F766E"
       },
-      "versionCode": 5,
+      "versionCode": 6,
       "blockedPermissions": [
         "android.permission.USE_BIOMETRIC",
         "android.permission.USE_FINGERPRINT",

@@ -12,7 +12,7 @@
     "ios": {
       "bundleIdentifier": "dev.omerarslan.mensa.student",
       "supportsTablet": false,
-      "buildNumber": "6"
+      "buildNumber": "7"
     },
     "android": {
       "package": "dev.omerarslan.mensa.student",
@@ -20,7 +20,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#1D4ED8"
       },
-      "versionCode": 6,
+      "versionCode": 7,
       "blockedPermissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.READ_EXTERNAL_STORAGE",
