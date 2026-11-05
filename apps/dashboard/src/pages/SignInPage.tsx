@@ -2,7 +2,8 @@ import { useI18n } from '@mensa/shared/react';
 import { useEffect } from 'react';
 import { FINANCE_USERNAME, missingEnvNames } from '../api';
 import { LanguageSwitch } from '../components/LanguageSwitch';
-import { Button, Notice } from '../components/ui';
+import { BrandMark } from '../components/Layout';
+import { Button, cardClass, Notice } from '../components/ui';
 import { useFinanceSession } from '../finance/session';
 
 /**
@@ -21,19 +22,26 @@ export function SignInPage() {
   }, [t]);
 
   return (
-    <main className="mx-auto max-w-xl space-y-4 px-4 py-10">
+    <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center gap-6 px-4 py-10">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-lg font-bold">{t('dashboard.title')}</p>
+        <BrandMark />
         <LanguageSwitch />
       </div>
-      <h1 className="text-2xl font-bold">{t('finance.signIn.title')}</h1>
-      <section className="space-y-3 rounded-card bg-surface p-4 shadow-sm">
-        <p>{t('finance.signIn.body')}</p>
-        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
-          <dt className="text-ink-muted">{t('finance.signIn.account')}</dt>
-          <dd className="font-semibold">{FINANCE_USERNAME}</dd>
+      <section aria-labelledby="sign-in-title" className={`${cardClass} space-y-5 p-6 sm:p-8`}>
+        <div className="space-y-2">
+          <h1 id="sign-in-title" className="text-title font-bold text-ink">
+            {t('finance.signIn.title')}
+          </h1>
+          <p className="text-ink-muted">{t('finance.signIn.body')}</p>
+        </div>
+        <dl className="flex flex-wrap items-baseline gap-x-3 rounded-control bg-canvas px-4 py-3">
+          <dt className="text-caption font-semibold text-ink-muted">
+            {t('finance.signIn.account')}
+          </dt>
+          <dd className="font-semibold text-ink">
+            <code>{FINANCE_USERNAME}</code>
+          </dd>
         </dl>
-        <p className="text-sm text-ink-muted">{t('finance.signIn.demoNote')}</p>
         {missingEnvNames.length > 0 ? (
           <Notice
             tone="error"
@@ -41,14 +49,17 @@ export function SignInPage() {
             title={t('connection.configMissing', { names: missingEnvNames.join(', ') })}
           />
         ) : (
-          <Button busy={busy} onClick={() => void signIn()}>
+          <Button busy={busy} className="w-full" onClick={() => void signIn()}>
             {busy ? t('finance.signIn.busy') : t('finance.signIn.action')}
           </Button>
         )}
         {failure ? (
           <Notice tone="error" role="alert" title={t(`finance.signIn.failure.${failure}`)} />
         ) : null}
-        <p className="text-sm text-ink-muted">{t('finance.signIn.sessionNote')}</p>
+        <div className="space-y-1 border-t border-line-subtle pt-4 text-caption text-ink-muted">
+          <p>{t('finance.signIn.demoNote')}</p>
+          <p>{t('finance.signIn.sessionNote')}</p>
+        </div>
       </section>
     </main>
   );

@@ -405,6 +405,16 @@ export const en = {
     'Saved refunds could not be read, so new refunds are blocked.',
 
   'dashboard.title': 'Studierendenwerk dashboard',
+  'finance.brand.subtitle': 'Finance · Mensa payments',
+  'finance.page.report':
+    'Server totals for one Berlin calendar day: overall, per mensa and per till.',
+  'finance.page.transactions':
+    'Every payment of the Studierendenwerk, newest first, with filters, details and a CSV export.',
+  'finance.page.attention': 'Payments the server flags for a person to look at.',
+  'finance.copy': 'Copy {what}',
+  'finance.copied': '{what} copied',
+  'finance.attention.openInPayments': 'Filter or export these in Payments',
+  'finance.report.negative': 'Negative',
   'finance.signIn.title': 'Sign in',
   'finance.signIn.body':
     'The dashboard reads payments, refunds and daily totals for the Studierendenwerk. It cannot create or change payments.',
@@ -438,11 +448,12 @@ export const en = {
   'finance.loading': 'Loading…',
   'finance.openPayment': 'Open payment',
   'finance.report.day': 'Day (Europe/Berlin)',
+  'finance.report.selected': 'Selected day',
   'finance.report.dayHint':
     'A calendar day in Berlin. Payments count on the day they were made, refunds on the day they completed.',
   'finance.report.show': 'Show day',
-  'finance.report.previous': '← Previous day',
-  'finance.report.next': 'Next day →',
+  'finance.report.previous': 'Previous day',
+  'finance.report.next': 'Next day',
   'finance.report.today': 'Today',
   'finance.report.loading': 'Loading the totals for this day…',
   'finance.report.refreshing': 'Refreshing. Shown: the totals fetched at {time} (Berlin time).',
@@ -573,11 +584,20 @@ export const en = {
   'finance.export.filters': 'Applied filters:',
   'finance.export.consistency':
     'The API has no snapshot for exports: a payment made or changed while the export runs may or may not be in the file, each at the newest state seen. The file is a complete read of the matching payments at that time, not an accounting snapshot of one instant.',
-  'finance.export.start': 'Export all matching payments',
+  'finance.export.start': 'Export CSV',
   'finance.export.cancel': 'Cancel export',
+  'finance.export.running': 'Exporting…',
+  'finance.export.scope':
+    'Export CSV saves every payment that matches the applied filters, read across all pages from the server, not only the rows loaded below.',
+  'finance.export.ready': 'Export ready: {payments} payments from {pages} pages.',
+  'finance.export.saveHint': 'Save the file to download it: {name}.',
+  'finance.export.save': 'Save CSV file',
+  'finance.export.saveAgain': 'Save again',
+  'finance.export.columns':
+    "One row per payment: IDs, the server's timestamps, status, amounts in integer cents (paid, refunded, pending, refundable), price group, payer ID, mensa, till, attention flag and reasons, version.",
   'finance.export.progress': 'Exporting: {pages} pages, {payments} payments read so far…',
   'finance.export.done': 'Export complete: {payments} payments from {pages} pages.',
-  'finance.export.file': 'Saved as {name}.',
+  'finance.export.file': 'The browser is saving {name}.',
   'finance.export.failed': 'The export failed.',
   'finance.export.noFile':
     'No file was saved, so nothing incomplete can pass for a full export. Try again.',
@@ -586,6 +606,8 @@ export const en = {
     'Export cancelled because the filters changed. No file was saved.',
   'finance.export.failed.offline':
     'A page got no answer from the server, even after a few attempts.',
+  'finance.export.failed.file':
+    'The pages were read, but the browser could not create or save the file.',
   'finance.export.failed.session': 'The session ended or changed during the export.',
   'finance.export.failed.forbidden': 'The server refused a page for this account.',
   'finance.export.failed.not_found': 'The server could not find a page.',
@@ -598,8 +620,8 @@ export const en = {
   'finance.export.failed.no_progress':
     'The server sent an empty page that still pointed to a next one.',
   'finance.payment.title': 'Payment {id}',
-  'finance.payment.backList': '← Back to the list',
-  'finance.payment.backAttention': '← Back to payments that need attention',
+  'finance.payment.backList': 'Back to the list',
+  'finance.payment.backAttention': 'Back to payments that need attention',
   'finance.payment.loading': 'Loading the newest state…',
   'finance.payment.fetched': 'Last fetched at {time} (Berlin time).',
   'finance.payment.failed': 'This payment could not be loaded.',
@@ -1068,6 +1090,16 @@ export const de: Record<MessageKey, string> = {
     'Gespeicherte Erstattungen konnten nicht gelesen werden, daher sind neue Erstattungen gesperrt.',
 
   'dashboard.title': 'Studierendenwerk-Dashboard',
+  'finance.brand.subtitle': 'Finanzen · Mensa-Zahlungen',
+  'finance.page.report':
+    'Server-Summen für einen Berliner Kalendertag: gesamt, je Mensa und je Kasse.',
+  'finance.page.transactions':
+    'Alle Zahlungen des Studierendenwerks, neueste zuerst, mit Filtern, Details und CSV-Export.',
+  'finance.page.attention': 'Zahlungen, die der Server zur Prüfung durch eine Person markiert.',
+  'finance.copy': '{what} kopieren',
+  'finance.copied': '{what} kopiert',
+  'finance.attention.openInPayments': 'In „Zahlungen“ filtern oder exportieren',
+  'finance.report.negative': 'Negativ',
   'finance.signIn.title': 'Anmelden',
   'finance.signIn.body':
     'Das Dashboard liest Zahlungen, Erstattungen und Tagessummen für das Studierendenwerk. Es kann keine Zahlungen anlegen oder ändern.',
@@ -1102,11 +1134,12 @@ export const de: Record<MessageKey, string> = {
   'finance.loading': 'Wird geladen …',
   'finance.openPayment': 'Zahlung öffnen',
   'finance.report.day': 'Tag (Europe/Berlin)',
+  'finance.report.selected': 'Gewählter Tag',
   'finance.report.dayHint':
     'Ein Kalendertag in Berlin. Zahlungen zählen am Tag, an dem sie gemacht wurden, Erstattungen am Tag ihres Abschlusses.',
   'finance.report.show': 'Tag anzeigen',
-  'finance.report.previous': '← Vortag',
-  'finance.report.next': 'Folgetag →',
+  'finance.report.previous': 'Vortag',
+  'finance.report.next': 'Folgetag',
   'finance.report.today': 'Heute',
   'finance.report.loading': 'Die Summen dieses Tages werden geladen …',
   'finance.report.refreshing':
@@ -1242,11 +1275,20 @@ export const de: Record<MessageKey, string> = {
   'finance.export.filters': 'Angewendete Filter:',
   'finance.export.consistency':
     'Die API kennt keinen Export-Stichtag: Eine Zahlung, die während des Exports entsteht oder sich ändert, kann in der Datei stehen oder fehlen, jeweils im neuesten gesehenen Stand. Die Datei ist ein vollständiges Auslesen der passenden Zahlungen zu dieser Zeit, kein Buchhaltungsabzug zu einem einzigen Zeitpunkt.',
-  'finance.export.start': 'Alle passenden Zahlungen exportieren',
+  'finance.export.start': 'CSV exportieren',
   'finance.export.cancel': 'Export abbrechen',
+  'finance.export.running': 'Export läuft …',
+  'finance.export.scope':
+    '„CSV exportieren“ speichert jede Zahlung, die zu den angewendeten Filtern passt, über alle Seiten vom Server gelesen, nicht nur die unten geladenen Zeilen.',
+  'finance.export.ready': 'Export bereit: {payments} Zahlungen aus {pages} Seiten.',
+  'finance.export.saveHint': 'Speichere die Datei, um sie herunterzuladen: {name}.',
+  'finance.export.save': 'CSV-Datei speichern',
+  'finance.export.saveAgain': 'Erneut speichern',
+  'finance.export.columns':
+    'Eine Zeile je Zahlung: IDs, Zeitstempel des Servers, Status, Beträge in ganzen Cent (bezahlt, erstattet, ausstehend, erstattbar), Preisgruppe, Zahler-ID, Mensa, Kasse, Prüfmarkierung und -gründe, Version.',
   'finance.export.progress': 'Export läuft: {pages} Seiten, bisher {payments} Zahlungen gelesen …',
   'finance.export.done': 'Export vollständig: {payments} Zahlungen aus {pages} Seiten.',
-  'finance.export.file': 'Gespeichert als {name}.',
+  'finance.export.file': 'Der Browser speichert {name}.',
   'finance.export.failed': 'Der Export ist fehlgeschlagen.',
   'finance.export.noFile':
     'Es wurde keine Datei gespeichert, damit nichts Unvollständiges als vollständiger Export gilt. Bitte erneut versuchen.',
@@ -1255,6 +1297,8 @@ export const de: Record<MessageKey, string> = {
     'Export abgebrochen, weil sich die Filter geändert haben. Es wurde keine Datei gespeichert.',
   'finance.export.failed.offline':
     'Eine Seite bekam keine Antwort vom Server, auch nach einigen Versuchen.',
+  'finance.export.failed.file':
+    'Die Seiten wurden gelesen, aber der Browser konnte die Datei nicht erstellen oder speichern.',
   'finance.export.failed.session': 'Die Sitzung endete oder wechselte während des Exports.',
   'finance.export.failed.forbidden': 'Der Server hat eine Seite für dieses Konto abgelehnt.',
   'finance.export.failed.not_found': 'Der Server konnte eine Seite nicht finden.',
@@ -1268,8 +1312,8 @@ export const de: Record<MessageKey, string> = {
   'finance.export.failed.no_progress':
     'Der Server hat eine leere Seite gesendet, die trotzdem auf eine nächste verwies.',
   'finance.payment.title': 'Zahlung {id}',
-  'finance.payment.backList': '← Zurück zur Liste',
-  'finance.payment.backAttention': '← Zurück zu den zu prüfenden Zahlungen',
+  'finance.payment.backList': 'Zurück zur Liste',
+  'finance.payment.backAttention': 'Zurück zu den zu prüfenden Zahlungen',
   'finance.payment.loading': 'Der neueste Stand wird geladen …',
   'finance.payment.fetched': 'Zuletzt abgerufen um {time} Uhr (Berliner Zeit).',
   'finance.payment.failed': 'Diese Zahlung konnte nicht geladen werden.',

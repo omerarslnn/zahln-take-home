@@ -30,7 +30,11 @@ function SignedIn({ route }: { route: Route }) {
   switch (route.page) {
     case 'report':
       return (
-        <Layout route={route} title={t('finance.nav.report')}>
+        <Layout
+          route={route}
+          title={t('finance.nav.report')}
+          description={t('finance.page.report')}
+        >
           <ReportPage day={route.day} />
         </Layout>
       );
@@ -42,7 +46,11 @@ function SignedIn({ route }: { route: Route }) {
       );
     case 'transactions':
       return (
-        <Layout route={route} title={t('finance.nav.transactions')}>
+        <Layout
+          route={route}
+          title={t('finance.nav.transactions')}
+          description={t('finance.page.transactions')}
+        >
           <TransactionsPage filter={route.filter} />
         </Layout>
       );
