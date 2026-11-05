@@ -229,7 +229,6 @@ export const en = {
   'refusal.session': 'Your session could not be renewed.',
   'refusal.unavailable': 'The server was busy and did nothing.',
   'refusal.other': 'The server refused this request.',
-  'history.title': 'Payment history',
   'history.timeZone': 'Times are Berlin time.',
   'history.unresolved':
     "Waiting for the server's answer. Once it is known, the payment also appears in the list.",
@@ -878,7 +877,6 @@ export const de: Record<MessageKey, string> = {
   'refusal.session': 'Deine Sitzung konnte nicht erneuert werden.',
   'refusal.unavailable': 'Der Server war ausgelastet und hat nichts getan.',
   'refusal.other': 'Der Server hat diese Anfrage abgelehnt.',
-  'history.title': 'Zahlungsverlauf',
   'history.timeZone': 'Zeiten in Berliner Zeit.',
   'history.unresolved':
     'Wartet auf die Antwort des Servers. Sobald sie bekannt ist, erscheint die Zahlung auch in der Liste.',
