@@ -453,6 +453,76 @@ try {
       '#/transactions?mensa=mensa_nord&status=confirmed&from=2026-10-26&to=2026-10-27',
   );
 
+  // Keyboard only, with real key events: Tab reaches every control of the payments page in
+  // document order, each with a visible focus indicator; every field has a name; Enter follows a link.
+  await go('#/transactions');
+  await waitFor(`/loaded so far|End of the list/.test(document.body.innerText)`, 'the payments');
+  const controlCount = await evaluate(`(() => {
+    window.__controls = [...document.querySelectorAll('a[href], button, input, select, textarea, [tabindex]')]
+      .filter((node) => !node.disabled && node.tabIndex >= 0 && node.getClientRects().length > 0);
+    // Tab starts after the focused element: start from the top of the document, not from the
+    // button clicked last (Chrome keeps that as its starting point even after a blur).
+    document.body.tabIndex = -1;
+    document.body.focus();
+    document.body.removeAttribute('tabindex');
+    return window.__controls.length;
+  })()`);
+  const pressKey = async (key, keyCode, text) => {
+    await page('Input.dispatchKeyEvent', {
+      type: 'keyDown',
+      key,
+      code: key,
+      windowsVirtualKeyCode: keyCode,
+      text,
+    });
+    await page('Input.dispatchKeyEvent', {
+      type: 'keyUp',
+      key,
+      code: key,
+      windowsVirtualKeyCode: keyCode,
+    });
+  };
+  const reached = [];
+  const unmarked = [];
+  // A date field takes one Tab per part (day, month, year): count each control once.
+  for (let presses = 0; reached.length < controlCount && presses < controlCount * 4; presses += 1) {
+    await pressKey('Tab', 9);
+    const step = await evaluate(`(() => {
+      const node = document.activeElement;
+      const style = getComputedStyle(node);
+      const ring = (style.outlineStyle !== 'none' && parseFloat(style.outlineWidth) > 0) || style.boxShadow !== 'none';
+      return { at: window.__controls.indexOf(node), ring, name: (node.getAttribute('aria-label') || node.id || node.textContent || node.tagName).trim().slice(0, 40) };
+    })()`);
+    if (step.at === reached.at(-1)) continue;
+    reached.push(step.at);
+    if (!step.ring) unmarked.push(step.name);
+  }
+  check(
+    'keyboard only: Tab reaches every control of the payments page in document order',
+    reached.every((at, index) => at === index),
+    `${controlCount} controls`,
+  );
+  check(
+    'keyboard only: every focused control shows a visible focus indicator',
+    unmarked.length === 0,
+    unmarked.slice(0, 5).join(', '),
+  );
+  const unnamed = await evaluate(
+    `[...document.querySelectorAll('input, select, textarea')].filter((field) => !(field.labels?.length || field.getAttribute('aria-label') || field.getAttribute('aria-labelledby'))).map((field) => field.id || field.name)`,
+  );
+  check('every field has a label', unnamed.length === 0, unnamed.join(', '));
+  await evaluate(`(() => {
+    const link = [...document.querySelectorAll('nav a')].find((node) => node.getAttribute('href')?.startsWith('#/report'));
+    link?.focus();
+    return !!link;
+  })()`);
+  await pressKey('Enter', 13, '\r');
+  const followed = await waitFor(`location.hash.startsWith('#/report')`, 'Enter', 5_000).then(
+    () => true,
+    () => false,
+  );
+  check('keyboard only: Enter on a navigation link opens it', followed);
+
   await go('#/transactions?from=2026-10-23&to=2026-10-23');
   await waitFor(
     `/loaded so far|End of the list/.test(document.body.innerText)`,
