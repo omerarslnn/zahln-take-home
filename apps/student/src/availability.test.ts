@@ -15,7 +15,12 @@ import { describe, it } from 'node:test';
 import { FakeConnectivity } from '../../../packages/domain/src/testing/fake-connectivity';
 import type { Fault } from '../../../packages/domain/src/testing/fake-server';
 import { TestEnvironment } from '../../../packages/domain/src/testing/harness';
-import { availabilityNotice, gateAnnouncement, paymentsOpen } from './availability';
+import {
+  availabilityNotice,
+  gateAnnouncement,
+  homeAvailabilityNotice,
+  paymentsOpen,
+} from './availability';
 import { afterPayAttempt, afterResend } from './payment-outcome';
 
 const PASTA = [{ itemId: 'itm_pasta', quantity: 1 }];
@@ -158,5 +163,15 @@ describe('payment availability on the review and result screens (BUG-01)', () =>
     });
     assert.equal(afterResend({ type: 'not_authorized', reason: 'locked_out' }), 'auth.locked_out');
     assert.equal(afterResend({ type: 'invalidated' }), 'result.sendInvalidated');
+  });
+});
+
+describe("Home's availability notice", () => {
+  it('appears only while payments are unavailable, never while open or still checking', () => {
+    for (const gate of GATE_STATES) {
+      const home = homeAvailabilityNotice(gate);
+      if (gate?.status === 'open' || gate?.status === 'checking') assert.equal(home, null);
+      else assert.deepEqual(home, availabilityNotice(gate)); // the same one notice as elsewhere
+    }
   });
 });

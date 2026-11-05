@@ -1,16 +1,22 @@
 import { parseOrderCode, parseOrderQr, ScanLock, type QrParseResult } from '@mensa/domain';
+import { colors } from '@mensa/shared';
 import { useI18n } from '@mensa/shared/react';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Linking, Text, TextInput, View } from 'react-native';
+import { Linking, StyleSheet, View } from 'react-native';
+import { Viewfinder } from '../components/Viewfinder';
 import {
   Body,
   Button,
   Card,
+  EmptyState,
+  Icon,
+  LoadingIndicator,
   Notice,
   Screen,
+  TextField,
   useAnnouncement,
   useAppActive,
 } from '../components/ui';
@@ -22,7 +28,9 @@ type Problem = Exclude<QrParseResult, { ok: true }>['reason'] | 'camera';
 /**
  * Scans a till's QR code. The code names an order, nothing else: it is parsed into an order ID
  * and the order is loaded from our own API on the next screen. A scanned link is never opened and
- * nothing in the code is trusted as an amount.
+ * nothing in the code is trusted as an amount. Layout: the viewfinder (or the camera-permission
+ * step), one line of instruction or the problem with "Scan again", and typing the code as the
+ * fallback that always works, also with a screen reader.
  */
 export function ScanScreen({ navigation }: Props) {
   const { t } = useI18n();
@@ -78,46 +86,49 @@ export function ScanScreen({ navigation }: Props) {
 
   return (
     <Screen>
-      <Text accessibilityRole="header" className="text-2xl font-bold text-ink">
-        {t('scan.title')}
-      </Text>
+      {permission === null ? <LoadingIndicator label={t('scan.permissionChecking')} /> : null}
+      {permission && !permission.granted ? (
+        <Card>
+          {permission.canAskAgain ? (
+            <EmptyState
+              icon="camera-outline"
+              title={t('scan.permissionTitle')}
+              description={t('scan.permissionBody')}
+              action={<Button label={t('scan.allow')} onPress={() => void requestPermission()} />}
+            />
+          ) : (
+            <EmptyState
+              icon="videocam-off-outline"
+              title={t('scan.deniedTitle')}
+              description={t('scan.deniedBody')}
+              action={
+                <Button
+                  tone="secondary"
+                  label={t('scan.openSettings')}
+                  onPress={() => void Linking.openSettings()}
+                />
+              }
+            />
+          )}
+        </Card>
+      ) : null}
 
-      {permission === null ? (
-        <Notice tone="neutral" title={t('scan.permissionChecking')} />
-      ) : !permission.granted && permission.canAskAgain ? (
-        <Notice
-          tone="neutral"
-          title={t('scan.permissionTitle')}
-          description={t('scan.permissionBody')}
-          actions={<Button label={t('scan.allow')} onPress={() => void requestPermission()} />}
-        />
-      ) : !permission.granted ? (
-        <Notice
-          tone="warning"
-          title={t('scan.deniedTitle')}
-          description={t('scan.deniedBody')}
-          actions={
-            <Button label={t('scan.openSettings')} onPress={() => void Linking.openSettings()} />
+      {permission?.granted ? (
+        <Viewfinder
+          label={t('scan.cameraLabel')}
+          camera={
+            cameraOn ? (
+              <CameraView
+                style={StyleSheet.absoluteFill}
+                facing="back"
+                barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+                onBarcodeScanned={onScanned}
+                onMountError={() => setProblem('camera')}
+              />
+            ) : null
           }
         />
       ) : null}
-
-      {cameraOn ? (
-        <View
-          accessible
-          accessibilityLabel={t('scan.cameraLabel')}
-          className="overflow-hidden rounded-card bg-ink"
-        >
-          <CameraView
-            style={{ width: '100%', aspectRatio: 1 }}
-            facing="back"
-            barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-            onBarcodeScanned={onScanned}
-            onMountError={() => setProblem('camera')}
-          />
-        </View>
-      ) : null}
-      {permission?.granted ? <Body muted>{t('scan.instructions')}</Body> : null}
 
       {problem ? (
         <Notice
@@ -125,29 +136,34 @@ export function ScanScreen({ navigation }: Props) {
           title={t(`scan.problem.${problem}`)}
           actions={<Button label={t('scan.again')} onPress={scanAgain} />}
         />
+      ) : permission?.granted ? (
+        <View className="flex-row gap-3 px-1">
+          <View className="h-6 justify-center">
+            <Icon name="scan-outline" color={colors.inkMuted} />
+          </View>
+          <View className="flex-1">
+            <Body muted>{t('scan.instructions')}</Body>
+          </View>
+        </View>
       ) : null}
 
       <Card title={t('scan.typeTitle')}>
-        <Body muted>{t('scan.typeHint')}</Body>
-        <TextInput
+        <TextField
+          label={t('scan.typeLabel')}
+          hint={t('scan.typeHint')}
           value={typed}
           onChangeText={(text) => {
             setTyped(text);
             setTypedInvalid(false);
           }}
+          error={typedInvalid ? t('scan.problem.invalid_order_id') : null}
           onSubmitEditing={openTyped}
           autoCapitalize="none"
           autoCorrect={false}
+          spellCheck={false}
           returnKeyType="go"
-          accessibilityLabel={t('scan.typeLabel')}
           placeholder="ord_…"
-          className="min-h-touch rounded-control border-2 border-line bg-surface px-3 text-base text-ink"
         />
-        {typedInvalid ? (
-          <Text className="text-base font-semibold text-danger">
-            {t('scan.problem.invalid_order_id')}
-          </Text>
-        ) : null}
         <Button
           tone="secondary"
           label={t('scan.typeOpen')}

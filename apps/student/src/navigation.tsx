@@ -40,7 +40,12 @@ export function RootNavigator() {
     <Stack.Navigator>
       {user ? (
         <>
-          <Stack.Screen name="Home" component={HomeScreen} options={{ title: t('nav.home') }} />
+          <Stack.Screen
+            name="Home"
+            component={HomeScreen}
+            // Home starts with the greeting; a bar saying "Start" above it would add nothing.
+            options={{ title: t('nav.home'), headerShown: false }}
+          />
           <Stack.Screen name="Scan" component={ScanScreen} options={{ title: t('nav.scan') }} />
           <Stack.Screen
             name="Review"

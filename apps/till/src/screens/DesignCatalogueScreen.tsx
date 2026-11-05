@@ -22,6 +22,7 @@ import {
   Section,
   Skeleton,
   StatusPill,
+  Tag,
   TextField,
   Title,
   type Tone,
@@ -117,6 +118,7 @@ export function DesignCatalogueScreen() {
             <StatusPill key={tone} tone={tone} label={`${tone} status`} />
           ))}
         </View>
+        <Tag icon="pricetag-outline" label="Tag: a fact, not a status" />
       </Section>
 
       <Section title="Notices" description="Text is one stop for screen readers; actions are not.">

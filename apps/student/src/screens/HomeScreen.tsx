@@ -1,37 +1,61 @@
-import { isFinal, type PayOrderIntent } from '@mensa/domain';
-import { formatCents } from '@mensa/shared';
 import { useI18n } from '@mensa/shared/react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Pressable, Text, View } from 'react-native';
-import { PaymentAvailability } from '../components/PaymentAvailability';
+import { View } from 'react-native';
+import { gateAnnouncement, homeAvailabilityNotice } from '../availability';
+import { AvailabilityNotice } from '../components/PaymentAvailability';
+import { actionPlace, PaymentActionRow } from '../components/PaymentActionRow';
 import { priceGroupKey } from '../components/payment-text';
-import { Body, Button, Card, Notice, Screen, StatusPill } from '../components/ui';
+import { ScanToPay } from '../components/ScanToPay';
+import {
+  Button,
+  Caption,
+  Card,
+  ListRow,
+  LoadingIndicator,
+  Notice,
+  Screen,
+  Tag,
+  Title,
+  useAnnouncement,
+} from '../components/ui';
+import { homeActivity } from '../home-activity';
 import type { RootStackParamList } from '../navigation';
-import { describeOutcome } from '../payment-outcome';
-import { useControllerRevision, usePaymentServices } from '../payments/PaymentServices';
+import {
+  useControllerRevision,
+  usePaymentGate,
+  usePaymentServices,
+} from '../payments/PaymentServices';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
+/**
+ * The payer's start: who is signed in and at which price (the server's), one dominant "Scan to
+ * pay", every payment on this phone that still needs an answer, recent results until dismissed,
+ * and the history. The availability warning appears only while payments are unavailable.
+ */
 export function HomeScreen({ navigation }: Props) {
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
   const { user, controller, recordsUnavailable, signOut } = usePaymentServices();
   useControllerRevision(controller);
-  // This user's payment actions that still need attention or whose result was not dismissed.
-  const actions = (controller?.list() ?? [])
-    .filter((record): record is PayOrderIntent => record.kind === 'payOrder')
-    .sort((a, b) => Number(isFinal(a)) - Number(isFinal(b)));
+  const gate = usePaymentGate();
+  // A change while Home is open (paused, back) is said once; the state Home opened with is not.
+  useAnnouncement(gateAnnouncement(gate, t), true);
+  const { attention, recent } = homeActivity(controller?.list() ?? []);
+  const openResult = (key: string) => navigation.navigate('Result', { key });
 
   return (
-    <Screen>
-      <View className="gap-1">
-        <Text accessibilityRole="header" className="text-2xl font-bold text-ink">
-          {t('home.title', { name: user?.displayName ?? '' })}
-        </Text>
-        <Body muted>
-          {t('home.account', {
-            group: user?.priceGroup ? t(priceGroupKey(user.priceGroup)) : '–',
-          })}
-        </Body>
+    <Screen headerless>
+      <View className="gap-2">
+        <Title>{t('home.title', { name: user?.displayName ?? '' })}</Title>
+        <View className="flex-row flex-wrap items-center gap-2">
+          {user?.priceGroup ? (
+            <Tag
+              icon="pricetag-outline"
+              label={t('home.priceGroup', { group: t(priceGroupKey(user.priceGroup)) })}
+            />
+          ) : null}
+          <Caption>{t('home.testAccount')}</Caption>
+        </View>
       </View>
 
       {recordsUnavailable ? (
@@ -40,53 +64,67 @@ export function HomeScreen({ navigation }: Props) {
           title={t('home.recordsUnavailable.title')}
           description={t('home.recordsUnavailable.body')}
         />
-      ) : !controller ? (
-        <Notice tone="neutral" title={t('home.loadingRecords')} />
+      ) : null}
+      {homeAvailabilityNotice(gate) ? <AvailabilityNotice gate={gate} /> : null}
+
+      <ScanToPay disabled={!controller} onPress={() => navigation.navigate('Scan')} />
+      {!controller && !recordsUnavailable ? (
+        <LoadingIndicator label={t('home.loadingRecords')} />
       ) : null}
 
-      <PaymentAvailability />
-
-      <Button
-        label={t('home.scan')}
-        hint={t('home.scanHint')}
-        disabled={!controller}
-        onPress={() => navigation.navigate('Scan')}
-      />
-
-      {actions.length > 0 ? (
-        <Card title={t('home.unfinished')}>
-          {actions.map((record) => {
-            const outcome = describeOutcome(record);
-            const amount = formatCents(record.payload.amountCents, locale);
-            return (
-              <Pressable
-                key={record.key}
-                accessibilityRole="button"
-                accessibilityLabel={`${t(outcome.title)}, ${amount}`}
-                accessibilityHint={t('home.openResult')}
-                onPress={() => navigation.navigate('Result', { key: record.key })}
-                className="min-h-touch gap-1 border-t border-line py-2 active:opacity-80"
-              >
-                <StatusPill tone={outcome.tone} label={t(outcome.title)} />
-                <Text className="text-base text-ink">{amount}</Text>
-              </Pressable>
-            );
-          })}
+      {controller && attention.length > 0 ? (
+        <Card title={t('home.attention.title')}>
+          <Caption>{t('home.attention.body')}</Caption>
+          {attention.map((record) => (
+            <PaymentActionRow
+              key={record.key}
+              record={record}
+              place={actionPlace(controller, record)}
+              separated
+              onPress={() => openResult(record.key)}
+            />
+          ))}
         </Card>
       ) : null}
 
-      <Button
-        tone="secondary"
-        label={t('home.history')}
-        disabled={!controller}
-        onPress={() => navigation.navigate('History')}
-      />
-      <Button tone="secondary" label={t('home.switchAccount')} onPress={signOut} />
-      <Button
-        tone="secondary"
-        label={t('nav.diagnostics')}
-        onPress={() => navigation.navigate('Diagnostics')}
-      />
+      {controller && recent.length > 0 ? (
+        <Card title={t('home.recent.title')}>
+          {recent.map((record, index) => (
+            <PaymentActionRow
+              key={record.key}
+              record={record}
+              place={actionPlace(controller, record)}
+              separated={index > 0}
+              onPress={() => openResult(record.key)}
+            />
+          ))}
+        </Card>
+      ) : null}
+
+      <Card>
+        <ListRow
+          icon="receipt-outline"
+          title={t('home.history')}
+          subtitle={t('home.historyHint')}
+          disabled={!controller}
+          onPress={() => navigation.navigate('History')}
+        />
+      </Card>
+
+      <View className="flex-row flex-wrap justify-center gap-2">
+        <Button
+          tone="tertiary"
+          icon="swap-horizontal-outline"
+          label={t('home.switchAccount')}
+          onPress={signOut}
+        />
+        <Button
+          tone="tertiary"
+          icon="construct-outline"
+          label={t('nav.diagnostics')}
+          onPress={() => navigation.navigate('Diagnostics')}
+        />
+      </View>
     </Screen>
   );
 }

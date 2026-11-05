@@ -14,6 +14,7 @@ export { Notice } from './Notice';
 export { PasswordField } from './PasswordField';
 export { BottomActionBar, Screen } from './Screen';
 export { StatusPill } from './StatusPill';
+export { Tag } from './Tag';
 export { toneIcon, type ButtonTone, type IconName, type Tone } from './styles';
 export { TextField, type TextFieldProps } from './TextField';
 export { Body, Caption, Heading, Title } from './Text';

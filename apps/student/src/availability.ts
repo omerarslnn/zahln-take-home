@@ -42,6 +42,15 @@ export function availabilityNotice(gate: GateState | null): AvailabilityNotice |
 }
 
 /**
+ * Home's availability notice: only while payments are actually unavailable (blocked, or the API is
+ * not configured). While the first answer is on its way Home says nothing, so it does not flash a
+ * "checking" banner at every start; the review screen, where paying happens, shows that state.
+ */
+export function homeAvailabilityNotice(gate: GateState | null): AvailabilityNotice | null {
+  return gate?.status === 'checking' ? null : availabilityNotice(gate);
+}
+
+/**
  * What a screen reader hears when availability changes on screen: why payments stopped, or that
  * they are available (the pay action is back). Null while checking. Screens pass it to
  * `useAnnouncement` with `changesOnly`: the state a screen opened with is not news, and an
