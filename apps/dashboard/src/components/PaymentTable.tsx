@@ -11,6 +11,8 @@ import {
   linkClass,
   Money,
   Notice,
+  rowHover,
+  Skeleton,
   StatusBadge,
   TableScroll,
   td,
@@ -40,31 +42,36 @@ export function PaymentTable({
   const now = useServerNow();
   return (
     <>
-      <ul aria-label={caption} className="space-y-2 sm:hidden">
+      <ul
+        aria-label={caption}
+        className="divide-y divide-line-subtle border-y border-line-subtle sm:hidden"
+      >
         {rows.map((payment) => (
-          <li key={payment.id} className="space-y-1 rounded-control border border-line/30 p-3">
+          <li key={payment.id} className="space-y-2 px-5 py-4">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <a
                 href={routeHref({ page: 'payment', paymentId: payment.id, back })}
                 className={linkClass}
               >
                 <span className="sr-only">{t('finance.openPayment')} </span>
-                <code>{payment.id}</code>
+                <code className="text-caption">{payment.id}</code>
               </a>
-              <Money cents={payment.amountCents} strong />
+              <span className="text-headline">
+                <Money cents={payment.amountCents} strong />
+              </span>
             </div>
             <div className="flex flex-wrap gap-1">
               {paymentBadges(payment).map((badge) => (
                 <StatusBadge key={badge.key} badge={badge} />
               ))}
             </div>
-            <p className="text-sm text-ink-muted">
+            <p className="text-caption text-ink-muted">
               <BerlinTime value={payment.createdAt} />
               {showAge ? ` · ${formatAge(payment.createdAt, now, locale)}` : ''} ·{' '}
               {payment.mensa.name} · {payment.till.name}
             </p>
             {payment.refundedAmountCents > 0 || payment.pendingRefundAmountCents > 0 ? (
-              <p className="text-sm">
+              <p className="text-caption text-ink">
                 {t('finance.col.refunded')} <Money cents={payment.refundedAmountCents} />
                 {payment.pendingRefundAmountCents > 0 ? (
                   <>
@@ -78,7 +85,7 @@ export function PaymentTable({
           </li>
         ))}
       </ul>
-      <div className="hidden sm:block">
+      <div className="hidden border-t border-line-subtle sm:block">
         <TableScroll label={caption}>
           <table className="w-full min-w-[60rem] border-collapse">
             <caption className="sr-only">{caption}</caption>
@@ -114,8 +121,8 @@ export function PaymentTable({
             </thead>
             <tbody>
               {rows.map((payment) => (
-                <tr key={payment.id}>
-                  <td className={td}>
+                <tr key={payment.id} className={rowHover}>
+                  <td className={`${td} text-caption`}>
                     <BerlinTime value={payment.createdAt} />
                   </td>
                   {showAge ? (
@@ -129,7 +136,7 @@ export function PaymentTable({
                       className={linkClass}
                     >
                       <span className="sr-only">{t('finance.openPayment')} </span>
-                      <code>{payment.id}</code>
+                      <code className="text-caption">{payment.id}</code>
                     </a>
                   </th>
                   <td className={td}>
@@ -140,22 +147,24 @@ export function PaymentTable({
                     </div>
                   </td>
                   <td className={tdNumber}>
-                    <Money cents={payment.amountCents} />
+                    <Money cents={payment.amountCents} strong />
                   </td>
-                  <td className={tdNumber}>
+                  <td
+                    className={`${tdNumber} ${payment.refundedAmountCents === 0 ? 'text-ink-muted' : ''}`}
+                  >
                     <Money cents={payment.refundedAmountCents} />
                     {payment.pendingRefundAmountCents > 0 ? (
-                      <span className="block text-sm text-ink-muted">
+                      <span className="block text-caption text-ink-muted">
                         {t('finance.col.refundPending')}{' '}
                         <Money cents={payment.pendingRefundAmountCents} />
                       </span>
                     ) : null}
                   </td>
-                  <td className={td}>
+                  <td className={`${td} text-caption`}>
                     {payment.mensa.name} · {payment.till.name}
                   </td>
                   <td className={td}>
-                    <code>{payment.payer.id}</code>
+                    <code className="text-caption">{payment.payer.id}</code>
                   </td>
                 </tr>
               ))}
@@ -190,14 +199,18 @@ export function ListStatus({
   const { t } = useI18n();
   if (state.failure) {
     return (
-      <Notice
-        tone="error"
-        role="alert"
-        title={t(shown === 0 ? 'finance.list.failed' : 'finance.list.moreFailed')}
-      >
-        <p>{t(readFailureKey(state.failure))}</p>
-        <Button onClick={onRetry}>{t('common.retry')}</Button>
-      </Notice>
+      <div className="px-5 py-4">
+        <Notice
+          tone="error"
+          role="alert"
+          title={t(shown === 0 ? 'finance.list.failed' : 'finance.list.moreFailed')}
+        >
+          <p>{t(readFailureKey(state.failure))}</p>
+          <Button icon="refresh" onClick={onRetry}>
+            {t('common.retry')}
+          </Button>
+        </Notice>
+      </div>
     );
   }
   const text =
@@ -208,9 +221,17 @@ export function ListStatus({
         : shown === 0
           ? emptyText
           : t('finance.list.end', { count: shown });
+  const firstLoad = (state.loading || !started) && shown === 0;
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <p role="status" className="text-sm text-ink-muted">
+    <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+      {firstLoad ? (
+        <div className="w-full space-y-3">
+          {[0, 1, 2, 3, 4].map((row) => (
+            <Skeleton key={row} className="h-6 w-full" />
+          ))}
+        </div>
+      ) : null}
+      <p role="status" className="text-caption text-ink-muted">
         {text}
       </p>
       {state.hasMore ? (

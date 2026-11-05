@@ -156,6 +156,7 @@ const network = [];
 const blocked = [];
 const preflights = [];
 const pageErrors = [];
+let failPages = false;
 eventHandlers.push((message) => {
   if (message.sessionId !== sessionId) return;
   const { params } = message;
@@ -188,6 +189,16 @@ eventHandlers.push((message) => {
         `${request.method} ${request.path}: ${params.corsErrorStatus?.corsError ?? params.blockedReason}`,
       );
     }
+  } else if (message.method === 'Fetch.requestPaused') {
+    // Only while the failed-page check runs; every other paused request goes on unchanged.
+    void (
+      failPages
+        ? page('Fetch.failRequest', {
+            requestId: params.requestId,
+            errorReason: 'InternetDisconnected',
+          })
+        : page('Fetch.continueRequest', { requestId: params.requestId })
+    ).catch(() => undefined);
   } else if (message.method === 'Runtime.exceptionThrown') {
     pageErrors.push(params.exceptionDetails.text);
   }
@@ -201,6 +212,17 @@ async function evaluate(expression) {
   });
   if (exceptionDetails)
     throw new Error(`page: ${exceptionDetails.exception?.description ?? exceptionDetails.text}`);
+  return result.value;
+}
+
+/** Runs `expression` as if the person had just clicked (transient user activation). */
+async function evaluateAsUser(expression) {
+  const { result } = await page('Runtime.evaluate', {
+    expression,
+    awaitPromise: true,
+    returnByValue: true,
+    userGesture: true,
+  });
   return result.value;
 }
 
@@ -219,6 +241,13 @@ const go = async (hash) => {
   await sleep(100);
 };
 const heading = () => evaluate(`document.querySelector('h1')?.textContent ?? ''`);
+const clickScript = (text) => `(() => {
+    const button = [...document.querySelectorAll('button, a')].find((node) => node.textContent.trim() === ${JSON.stringify(text)});
+    if (!button || button.disabled) return false;
+    button.click();
+    return true;
+  })()`;
+const clickAsUser = (text) => evaluateAsUser(clickScript(text));
 const clickButton = (text) =>
   evaluate(`(() => {
     const button = [...document.querySelectorAll('button, a')].find((node) => node.textContent.trim() === ${JSON.stringify(text)});
@@ -300,7 +329,7 @@ async function reportMatches(day) {
       );
     });
   const figures = await evaluate(
-    `[...document.querySelectorAll('dl[aria-label] dd.text-2xl')].map((cell) => cell.innerText.trim())`,
+    `[...document.querySelectorAll('dl[aria-label] dd[data-amount]')].map((cell) => cell.innerText.trim())`,
   );
   const figuresOk =
     JSON.stringify(figures) ===
@@ -528,14 +557,34 @@ try {
     `/loaded so far|End of the list/.test(document.body.innerText)`,
     'the filtered list',
   );
+  const exportVisible = await evaluate(`(() => {
+    const button = [...document.querySelectorAll('main button')].find((node) => node.textContent.trim() === 'Export CSV');
+    const title = document.querySelector('h1');
+    if (!button || !title) return false;
+    const box = button.getBoundingClientRect();
+    return box.top >= 0 && box.bottom <= innerHeight && box.top - title.getBoundingClientRect().top < 160 &&
+      button.getAttribute('aria-describedby') === 'export-scope' &&
+      document.getElementById('export-scope').textContent.includes('all pages');
+  })()`);
+  check(
+    'the Export CSV action is visible next to the page heading and says it covers every page of the applied filters',
+    exportVisible,
+  );
   const before = readdirSync(downloads).length;
-  await clickButton('Export all matching payments');
+  // Started like a person's click: the file is saved at once, no second click needed.
+  await clickAsUser('Export CSV');
   await waitFor(
     `document.body.innerText.includes('Export complete')`,
     'the filtered export',
     120_000,
   );
   await sleep(1_500);
+  check(
+    'a quick export saves its file at once and names it with the count',
+    (await evaluate(
+      `/Export complete: [\\d,]+ payments from [\\d,]+ pages\\.[\\s\\S]*The browser is saving mensa-payments_2026-10-23_to_2026-10-23/.test(document.body.innerText)`,
+    )) === true,
+  );
   const file = readdirSync(downloads).find((name) => name.includes('2026-10-23_to_2026-10-23'));
   const dayExpected = await apiAllPayments(
     `from=${encodeURIComponent('2026-10-23T00:00:00+02:00')}&to=${encodeURIComponent('2026-10-24T00:00:00+02:00')}`,
@@ -552,9 +601,26 @@ try {
 
   await go('#/transactions');
   await waitFor(`/loaded so far/.test(document.body.innerText)`, 'the full list');
-  await clickButton('Export all matching payments');
-  await waitFor(`document.body.innerText.includes('Export complete')`, 'the full export', 300_000);
+  // Let the earlier click's user activation run out (Chrome keeps it for 5 seconds), so this
+  // export finishes without a recent click, like a long export does.
+  await sleep(6_000);
+  const beforeFull = readdirSync(downloads).length;
+  // Started without a fresh click (as after a long export): the page must not download by
+  // itself, but offer the file with one click of the person.
+  await clickButton('Export CSV');
+  await waitFor(`document.body.innerText.includes('Export ready')`, 'the full export', 300_000);
   await sleep(1_500);
+  const heldBack = readdirSync(downloads).length === beforeFull;
+  await clickAsUser('Save CSV file');
+  await waitFor(
+    `document.body.innerText.includes('The browser is saving')`,
+    'the saved full export',
+  );
+  await sleep(2_000);
+  check(
+    'a long export offers "Save CSV file" instead of a download the browser may hold back',
+    heldBack && readdirSync(downloads).length === beforeFull + 1,
+  );
   const fullFile = readdirSync(downloads).find((name) => !name.includes('_to_'));
   const fullCsv = fullFile ? readFileSync(join(downloads, fullFile), 'utf8') : '';
   const exportedIds = fullCsv
@@ -570,7 +636,8 @@ try {
     `${exportedIds.length} payments in ${Math.ceil(independent.length / 200)} pages`,
   );
   const shownDone = await evaluate(
-    `document.body.innerText.match(/Export complete: (\\d+) payments from (\\d+) pages/)?.slice(1).join('/') ?? ''`,
+    // The counts are written in the reader's language (5,595): compared without separators.
+    `document.body.innerText.match(/Export (?:complete|ready): ([\\d,]+) payments from ([\\d,]+) pages/)?.slice(1).map((part) => part.replaceAll(',', '')).join('/') ?? ''`,
   );
   check(
     'the export reports its page and payment counts',
@@ -579,17 +646,14 @@ try {
   );
 
   const filesBefore = readdirSync(downloads);
-  await clickButton('Export all matching payments');
-  await waitFor(
-    `!!document.querySelector('[role=status]') && document.body.innerText.includes('Exporting:')`,
-    'a running export',
-  );
+  await clickButton('Export CSV');
+  await waitFor(`document.body.innerText.includes('Exporting:')`, 'a running export');
   await clickButton('Cancel export');
   await waitFor(
     `document.body.innerText.includes('Export cancelled. No file was saved.')`,
     'the cancellation',
   );
-  await clickButton('Export all matching payments');
+  await clickButton('Export CSV');
   await waitFor(`document.body.innerText.includes('Exporting:')`, 'a second running export');
   await go('#/transactions?status=declined');
   await waitFor(
@@ -605,6 +669,34 @@ try {
     'a cancelled export, or one overtaken by a new filter, saves no file',
     newFiles.length === 0,
     newFiles.join(', '),
+  );
+
+  // A page that cannot be read: every request for a following page fails, as offline. The export
+  // must fail as a whole, say why, offer "Try again" and save nothing.
+  await go('#/transactions');
+  await waitFor(`/loaded so far/.test(document.body.innerText)`, 'the full list again');
+  const beforeFailure = readdirSync(downloads).length;
+  failPages = true;
+  await page('Fetch.enable', { patterns: [{ urlPattern: '*/payments?*cursor=*' }] });
+  await clickAsUser('Export CSV');
+  const failedShown = await waitFor(
+    `document.body.innerText.includes('The export failed.')`,
+    'the failed export',
+    120_000,
+  ).then(
+    () => true,
+    () => false,
+  );
+  await page('Fetch.disable');
+  failPages = false;
+  await sleep(1_500);
+  check(
+    'a page that cannot be read fails the whole export with a reason, "Try again" and no file',
+    failedShown &&
+      readdirSync(downloads).length === beforeFailure &&
+      (await evaluate(
+        `document.body.innerText.includes('No file was saved') && [...document.querySelectorAll('button')].some((node) => node.textContent.trim() === 'Try again')`,
+      )) === true,
   );
 
   await go('#/payments/pay_90d914f2be37a714?back=%23%2Ftransactions');

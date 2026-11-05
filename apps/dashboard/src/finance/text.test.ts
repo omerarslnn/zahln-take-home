@@ -55,7 +55,15 @@ describe('status badges', () => {
       ).map(historyEventKey),
       exportFailureKey({ reason: 'repeated_cursor' }),
       exportFailureKey({ reason: 'page_failed', failure: 'offline' }),
-    ];
+      // The pages were read but the browser could not offer the file: its own message.
+      exportFailureKey({ reason: 'file' }),
+      'finance.export.scope',
+      'finance.export.ready',
+      'finance.export.saveHint',
+      'finance.export.save',
+      'finance.export.saveAgain',
+    ] as const;
+    assert.equal(exportFailureKey({ reason: 'file' }), 'finance.export.failed.file');
     for (const key of keys) {
       assert.ok(en[key] && de[key] && en[key] !== de[key], key);
     }

@@ -57,7 +57,7 @@ export function readFailureKey(failure: ReadFailure | 'wrong_day' | 'error'): Me
   return `finance.failure.${failure}`;
 }
 
-export function exportFailureKey(failure: ExportFailure): MessageKey {
+export function exportFailureKey(failure: ExportFailure | { reason: 'file' }): MessageKey {
   return failure.reason === 'page_failed'
     ? `finance.export.failed.${failure.failure}`
     : `finance.export.failed.${failure.reason}`;

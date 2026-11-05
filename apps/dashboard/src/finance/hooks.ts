@@ -161,24 +161,63 @@ export function useMensas(services: FinanceServices) {
 export type ExportState =
   | { phase: 'idle' }
   | { phase: 'running'; key: string; progress: ExportProgress }
-  | { phase: 'done'; key: string; payments: number; pages: number; fileName: string }
-  | { phase: 'failed'; key: string; failure: ExportFailure; pages: number; payments: number }
+  | {
+      phase: 'done';
+      key: string;
+      payments: number;
+      pages: number;
+      fileName: string;
+      /** Whether the browser was asked to save the file; false until the person saves it. */
+      saved: boolean;
+    }
+  | {
+      phase: 'failed';
+      key: string;
+      /** `file`: the pages were read but the browser could not create or offer the file. */
+      failure: ExportFailure | { reason: 'file' };
+      pages: number;
+      payments: number;
+    }
   | { phase: 'cancelled'; key: string; why: 'user' | 'filter' };
+
+/**
+ * Whether the click that started the export still counts as a user action. Browsers let a page
+ * start a download by itself only then; a full export takes long enough that this has run out, and
+ * a later scripted download may be held back ("this site wants to download multiple files") while
+ * the page would claim it was saved. Without the API (older Safari) the answer is no.
+ */
+function clickIsRecent(): boolean {
+  return (navigator as { userActivation?: UserActivation }).userActivation?.isActive === true;
+}
 
 /**
  * A CSV export of every payment matching a filter (collectPayments: one cursor chain, bounded read
  * retries, no partial file). The filter is captured at the start; the screen cancels the export when
- * its filter changes, and leaving the session cancels it too. Only a complete result is downloaded.
+ * its filter changes, and leaving the session cancels it too. Only a complete result becomes a file:
+ * saved at once while the starting click is recent, otherwise offered with "Save CSV file", so the
+ * download is always started by the person and the page never claims a file it did not offer.
  */
 export function useExport(services: FinanceServices) {
   const [state, setState] = useState<ExportState>({ phase: 'idle' });
   const running = useRef<{ cancelled: boolean } | null>(null);
+  const file = useRef<{ text: string; name: string } | null>(null);
+
+  const offer = useCallback((): boolean => {
+    if (!file.current) return false;
+    try {
+      downloadText(file.current.text, file.current.name);
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
 
   const start = useCallback(
     async (filter: TransactionFilter) => {
       if (running.current) running.current.cancelled = true;
       const run = { cancelled: false };
       running.current = run;
+      file.current = null;
       const key = filterKey(filter);
       setState({ phase: 'running', key, progress: { pages: 0, payments: 0 } });
       const outcome = await collectPayments(
@@ -194,22 +233,44 @@ export function useExport(services: FinanceServices) {
       if (running.current !== run) return; // cancelled, or a newer export took over
       running.current = null;
       if (outcome.kind === 'complete') {
-        const fileName = exportFileName(filter, new Date());
-        downloadText(paymentsToCsv(outcome.payments), fileName);
-        setState({
-          phase: 'done',
-          key,
-          payments: outcome.payments.length,
-          pages: outcome.pages,
-          fileName,
-        });
+        const counts = { key, payments: outcome.payments.length, pages: outcome.pages };
+        try {
+          file.current = {
+            text: paymentsToCsv(outcome.payments),
+            name: exportFileName(filter, new Date()),
+          };
+        } catch {
+          setState({ phase: 'failed', failure: { reason: 'file' }, ...counts });
+          return;
+        }
+        const saved = clickIsRecent() && offer();
+        setState({ phase: 'done', fileName: file.current.name, saved, ...counts });
       } else if (outcome.kind === 'failed') {
         const { failure, pages, payments } = outcome;
         setState({ phase: 'failed', key, failure, pages, payments });
       }
     },
-    [services],
+    [services, offer],
   );
+
+  /** Saves the finished file (again); called from the person's click. */
+  const save = useCallback(() => {
+    if (offer()) {
+      setState((current) => (current.phase === 'done' ? { ...current, saved: true } : current));
+    } else {
+      setState((current) =>
+        current.phase === 'done'
+          ? {
+              phase: 'failed',
+              key: current.key,
+              failure: { reason: 'file' },
+              pages: current.pages,
+              payments: current.payments,
+            }
+          : current,
+      );
+    }
+  }, [offer]);
 
   const cancel = useCallback((why: 'user' | 'filter') => {
     if (!running.current) return;
@@ -220,13 +281,14 @@ export function useExport(services: FinanceServices) {
     );
   }, []);
 
-  // A new session (or leaving the page) ends an export that is still running.
+  // A new session (or leaving the page) ends an export that is still running and drops its file.
   useEffect(
     () => () => {
       if (running.current) running.current.cancelled = true;
+      file.current = null;
     },
     [services],
   );
 
-  return { state, start, cancel };
+  return { state, start, save, cancel };
 }

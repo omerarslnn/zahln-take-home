@@ -3,7 +3,8 @@ import type { MessageKey } from '@mensa/shared';
 import { useI18n } from '@mensa/shared/react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { ListStatus, PaymentTable } from '../components/PaymentTable';
-import { Button, FOCUS, Notice, Section } from '../components/ui';
+import { Icon } from '../components/Icon';
+import { Button, cardClass, FOCUS, Notice, PageActions, Section } from '../components/ui';
 import {
   filterKey,
   filterProblem,
@@ -52,8 +53,27 @@ export function TransactionsPage({ filter }: { filter: TransactionFilter }) {
     if (exportState.phase === 'running' && exportState.key !== key) cancelExport('filter');
   }, [key, exportState, cancelExport]);
 
+  const running = exportState.phase === 'running';
+
   return (
     <>
+      <PageActions>
+        <Button
+          icon="download"
+          busy={running}
+          aria-describedby="export-scope"
+          onClick={() => void exporter.start(applied)}
+        >
+          {running ? t('finance.export.running') : t('finance.export.start')}
+        </Button>
+      </PageActions>
+      <ExportStatus
+        filter={applied}
+        state={exportState}
+        onCancel={() => cancelExport('user')}
+        onSave={exporter.save}
+        onRetry={() => void exporter.start(applied)}
+      />
       <FilterForm
         key={key}
         filter={applied}
@@ -61,15 +81,13 @@ export function TransactionsPage({ filter }: { filter: TransactionFilter }) {
         mensasFailed={mensas.failure !== null}
         onRetryMensas={mensas.reload}
       />
-      <ExportPanel
-        filter={applied}
-        mensas={mensas.mensas}
-        state={exportState}
-        onStart={() => void exporter.start(applied)}
-        onCancel={() => cancelExport('user')}
-      />
-      <Section id="transactions-list" title={t('finance.transactions.listTitle')}>
-        <p className="text-sm text-ink-muted">{t('finance.transactions.order')}</p>
+      <AppliedFilters filter={applied} mensas={mensas.mensas} />
+      <Section
+        id="transactions-list"
+        title={t('finance.transactions.listTitle')}
+        description={t('finance.transactions.order')}
+        flush
+      >
         {list.rows.length > 0 ? (
           <PaymentTable
             rows={list.rows}
@@ -90,7 +108,7 @@ export function TransactionsPage({ filter }: { filter: TransactionFilter }) {
   );
 }
 
-const fieldClass = `min-h-touch w-full rounded-control border-2 border-line bg-surface px-3 ${FOCUS}`;
+const fieldClass = `min-h-touch w-full rounded-control border-2 border-line bg-surface px-3 text-ink ${FOCUS}`;
 
 function FilterForm({
   filter,
@@ -113,7 +131,7 @@ function FilterForm({
   return (
     <form
       aria-labelledby="filters-title"
-      className="space-y-3 rounded-card bg-surface p-4 shadow-sm"
+      className={`${cardClass} space-y-4 p-5`}
       onSubmit={(event) => {
         event.preventDefault();
         if (!problem)
@@ -122,11 +140,18 @@ function FilterForm({
           );
       }}
     >
-      <h2 id="filters-title" className="text-lg font-semibold">
-        {t('finance.filters.title')}
-      </h2>
-      <p className="text-sm text-ink-muted">{t('finance.filters.combined')}</p>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="flex h-8 w-8 items-center justify-center rounded-control bg-brand-subtle text-brand">
+          <Icon name="filter" />
+        </span>
+        <div>
+          <h2 id="filters-title" className="text-headline font-semibold text-ink">
+            {t('finance.filters.title')}
+          </h2>
+          <p className="text-caption text-ink-muted">{t('finance.filters.combined')}</p>
+        </div>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Field id="filter-mensa" label={t('finance.filters.mensa')}>
           <select
             id="filter-mensa"
@@ -241,12 +266,12 @@ function FilterForm({
               className={fieldClass}
             />
           </Field>
-          <p id="filter-q-hint" className="mt-1 text-sm text-ink-muted">
+          <p id="filter-q-hint" className="mt-1 text-caption text-ink-muted">
             {t('finance.filters.searchHint')}
           </p>
         </div>
       </div>
-      <p id="filter-days-hint" className="text-sm text-ink-muted">
+      <p id="filter-days-hint" className="text-caption text-ink-muted">
         {t('finance.filters.daysHint')}
       </p>
       {problem ? (
@@ -261,15 +286,16 @@ function FilterForm({
           </Button>
         </Notice>
       ) : null}
-      <div className="flex flex-wrap gap-2">
-        <Button type="submit" disabled={problem !== null}>
-          {t('finance.filters.apply')}
-        </Button>
+      <div className="flex flex-wrap justify-end gap-2 border-t border-line-subtle pt-4">
         <Button
           tone="secondary"
+          icon="close"
           onClick={() => navigate(routeHref({ page: 'transactions', filter: NO_FILTER }))}
         >
           {t('finance.filters.reset')}
+        </Button>
+        <Button type="submit" icon="check" disabled={problem !== null}>
+          {t('finance.filters.apply')}
         </Button>
       </div>
     </form>
@@ -279,7 +305,7 @@ function FilterForm({
 function Field({ id, label, children }: { id: string; label: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1">
-      <label htmlFor={id} className="text-sm font-semibold">
+      <label htmlFor={id} className="text-caption font-semibold text-ink">
         {label}
       </label>
       {children}
@@ -313,73 +339,142 @@ function useFilterSummary(filter: TransactionFilter, mensas: Mensa[] | null): st
   return parts.length > 0 ? parts.join(' · ') : t('finance.filters.summaryNone');
 }
 
-function ExportPanel({
-  filter,
-  mensas,
-  state,
-  onStart,
-  onCancel,
-}: {
-  filter: TransactionFilter;
-  mensas: Mensa[] | null;
-  state: ExportState;
-  onStart: () => void;
-  onCancel: () => void;
-}) {
+/** The applied filters in words, and what an export contains (the Export button points here). */
+function AppliedFilters({ filter, mensas }: { filter: TransactionFilter; mensas: Mensa[] | null }) {
   const { t } = useI18n();
   const summary = useFilterSummary(filter, mensas);
+  return (
+    <div className="flex gap-3 rounded-card border border-brand-line bg-brand-subtle px-5 py-4">
+      <span className="mt-0.5 text-brand">
+        <Icon name="info" />
+      </span>
+      <div className="min-w-0 space-y-1">
+        <p className="text-ink">
+          <span className="font-semibold">{t('finance.export.filters')}</span> {summary}
+        </p>
+        <p id="export-scope" className="text-caption text-ink-muted">
+          {t('finance.export.scope')}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Where the export says what it is doing. One visually hidden live region speaks the start and the
+ * outcome once each (not every page read); the panel shows the details while there is something to
+ * say about the applied filter, with the action that fits: Cancel, Save, Try again.
+ */
+function ExportStatus({
+  filter,
+  state,
+  onCancel,
+  onSave,
+  onRetry,
+}: {
+  filter: TransactionFilter;
+  state: ExportState;
+  onCancel: () => void;
+  onSave: () => void;
+  onRetry: () => void;
+}) {
+  const { t, locale } = useI18n();
   const sameFilter = state.phase !== 'idle' && state.key === filterKey(filter);
+  // Counts in the reader's language: 5,595 / 5.595.
+  const number = (value: number) => new Intl.NumberFormat(locale).format(value);
+  const counts =
+    state.phase === 'done'
+      ? { payments: number(state.payments), pages: number(state.pages) }
+      : undefined;
+  const spoken =
+    state.phase === 'running'
+      ? t('finance.export.running')
+      : state.phase === 'done' && sameFilter && counts
+        ? `${t(state.saved ? 'finance.export.done' : 'finance.export.ready', counts)} ${t(
+            state.saved ? 'finance.export.file' : 'finance.export.saveHint',
+            { name: state.fileName },
+          )}`
+        : state.phase === 'failed' && sameFilter
+          ? `${t('finance.export.failed')} ${t(exportFailureKey(state.failure))}`
+          : state.phase === 'cancelled'
+            ? t(
+                state.why === 'filter'
+                  ? 'finance.export.cancelledFilter'
+                  : 'finance.export.cancelled',
+              )
+            : '';
 
   return (
-    <Section id="export" title={t('finance.export.title')}>
-      <p>{t('finance.export.body')}</p>
-      <p>
-        <span className="font-semibold">{t('finance.export.filters')}</span> {summary}
+    <>
+      <p aria-live="polite" className="sr-only">
+        {spoken}
       </p>
-      <p className="text-sm text-ink-muted">{t('finance.export.consistency')}</p>
-      <div aria-live="polite" className="space-y-2">
-        {state.phase === 'running' ? (
-          <p role="status">
-            {t('finance.export.progress', {
-              pages: state.progress.pages,
-              payments: state.progress.payments,
-            })}
-          </p>
-        ) : null}
-        {state.phase === 'done' && sameFilter ? (
-          <Notice
-            tone="ok"
-            role="none"
-            title={t('finance.export.done', { payments: state.payments, pages: state.pages })}
-          >
-            <p>{t('finance.export.file', { name: state.fileName })}</p>
-          </Notice>
-        ) : null}
-        {state.phase === 'failed' && sameFilter ? (
-          <Notice tone="error" role="none" title={t('finance.export.failed')}>
-            <p>{t(exportFailureKey(state.failure))}</p>
-            <p>{t('finance.export.noFile')}</p>
-          </Notice>
-        ) : null}
-        {state.phase === 'cancelled' ? (
-          <Notice
-            tone="neutral"
-            role="none"
-            title={t(
-              state.why === 'filter'
-                ? 'finance.export.cancelledFilter'
-                : 'finance.export.cancelled',
-            )}
-          />
-        ) : null}
-      </div>
-      {state.phase === 'running' ? (
-        <Button tone="secondary" onClick={onCancel}>
-          {t('finance.export.cancel')}
-        </Button>
-      ) : (
-        <Button onClick={onStart}>{t('finance.export.start')}</Button>
-      )}
-    </Section>
+      {spoken ? (
+        <section aria-labelledby="export-title">
+          <h2 id="export-title" className="sr-only">
+            {t('finance.export.title')}
+          </h2>
+          {state.phase === 'running' ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-brand-line bg-brand-subtle px-5 py-4">
+              <div className="flex items-center gap-3">
+                <span
+                  aria-hidden="true"
+                  className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-brand border-r-transparent motion-reduce:animate-none"
+                />
+                <p className="font-semibold text-ink">
+                  {t('finance.export.progress', {
+                    pages: number(state.progress.pages),
+                    payments: number(state.progress.payments),
+                  })}
+                </p>
+              </div>
+              <Button tone="secondary" icon="close" onClick={onCancel}>
+                {t('finance.export.cancel')}
+              </Button>
+            </div>
+          ) : null}
+          {state.phase === 'done' ? (
+            <Notice
+              tone="ok"
+              role="none"
+              title={t(state.saved ? 'finance.export.done' : 'finance.export.ready', counts)}
+            >
+              <p className="flex items-center gap-2">
+                <Icon name="file" size={18} />
+                <span className="break-all">
+                  {t(state.saved ? 'finance.export.file' : 'finance.export.saveHint', {
+                    name: state.fileName,
+                  })}
+                </span>
+              </p>
+              <p className="text-caption text-ink-muted">{t('finance.export.columns')}</p>
+              <Button tone={state.saved ? 'secondary' : 'primary'} icon="download" onClick={onSave}>
+                {t(state.saved ? 'finance.export.saveAgain' : 'finance.export.save')}
+              </Button>
+            </Notice>
+          ) : null}
+          {state.phase === 'failed' ? (
+            <Notice tone="error" role="none" title={t('finance.export.failed')}>
+              <p>{t(exportFailureKey(state.failure))}</p>
+              <p>{t('finance.export.noFile')}</p>
+              <Button tone="secondary" icon="refresh" onClick={onRetry}>
+                {t('common.retry')}
+              </Button>
+            </Notice>
+          ) : null}
+          {state.phase === 'cancelled' ? (
+            <Notice
+              tone="neutral"
+              role="none"
+              title={t(
+                state.why === 'filter'
+                  ? 'finance.export.cancelledFilter'
+                  : 'finance.export.cancelled',
+              )}
+            />
+          ) : null}
+        </section>
+      ) : null}
+    </>
   );
 }
