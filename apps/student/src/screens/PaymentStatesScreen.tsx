@@ -12,6 +12,7 @@ import type { RootStackParamList } from '../navigation';
 import { describeOutcome } from '../payment-outcome';
 import { historySections } from '../history-sections';
 import { HistoryView } from './HistoryScreen';
+import { HomeView } from './HomeScreen';
 import { PaymentDetailView } from './PaymentDetailScreen';
 import { ResultView } from './ResultScreen';
 import { ReviewLoading, ReviewView, type ReviewViewProps } from './ReviewScreen';
@@ -76,6 +77,7 @@ function ReviewPreview({
 type Preview = { title: string; render: () => React.JSX.Element };
 
 const PREVIEWS: Record<string, Preview> = {
+  ...homePreviews(),
   'review-open': { title: 'Review: open', render: () => <ReviewPreview {...REVIEW} payable /> },
   'review-last-minute': {
     title: 'Review: last minute',
@@ -138,6 +140,59 @@ const PREVIEWS: Record<string, Preview> = {
   ...resultPreviews(),
   ...historyPreviews(),
 };
+
+function homePreviews(): Record<string, Preview> {
+  const at = (iso: string) => Date.parse(iso);
+  const with_ = (
+    display: PaymentDisplay,
+    key: string,
+    sentAt: string,
+    refusal: string | null = null,
+  ) => ({
+    record: { ...sampleIntent(display, refusal), key, lastSentAt: at(sentAt) },
+    place: 'Mensa am Campus',
+  });
+  const base = {
+    name: 'Test Student',
+    priceGroup: 'student' as const,
+    ready: true,
+    recordsUnavailable: false,
+    gate: OPEN,
+    attention: [],
+    recent: [],
+    onScan: noop,
+    onOpenResult: noop,
+    onHistory: noop,
+    onSwitchAccount: noop,
+    onDiagnostics: noop,
+  };
+  return {
+    'home-activity': {
+      title: 'Home: unfinished and recent payments',
+      render: () => (
+        <HomeView
+          {...base}
+          attention={[
+            with_('checking', 'k1', '2026-11-05T11:20:00Z', 'unavailable'),
+            with_('pending', 'k2', '2026-11-05T11:12:00Z'),
+          ]}
+          recent={[
+            with_('confirmed', 'k3', '2026-11-05T11:02:00Z'),
+            with_('declined', 'k4', '2026-11-04T16:03:00Z'),
+          ]}
+        />
+      ),
+    },
+    'home-paused': {
+      title: 'Home: payments paused by the server',
+      render: () => <HomeView {...base} gate={{ status: 'blocked', reason: 'payments_paused' }} />,
+    },
+    'home-loading': {
+      title: 'Home: saved payments loading',
+      render: () => <HomeView {...base} ready={false} />,
+    },
+  };
+}
 
 function samplePayment(id: string, createdAt: string, extra: Partial<Payment> = {}): Payment {
   return {

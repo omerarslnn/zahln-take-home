@@ -25,7 +25,7 @@ export function SecureStorageCheck() {
 
   return (
     <Card title={t('storage.title')}>
-      <Text className="text-base text-ink-muted">{t('storage.description')}</Text>
+      <Text className="text-body text-ink-muted">{t('storage.description')}</Text>
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ disabled: running, busy: running }}
@@ -40,7 +40,7 @@ export function SecureStorageCheck() {
       <View accessibilityLiveRegion="polite">
         {state.phase === 'done' ? (
           <Text
-            className={`text-base ${state.result.ok ? 'text-ink' : 'font-semibold text-danger'}`}
+            className={`text-body ${state.result.ok ? 'text-ink' : 'font-semibold text-danger'}`}
           >
             {describeCheck(state.result, t)}
           </Text>

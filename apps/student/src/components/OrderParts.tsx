@@ -33,7 +33,7 @@ export function MerchantHeader({
   );
 }
 
-/** "2 × Pasta … €5.00 each", read as "2 times Pasta, €5.00 each". The price is the server's. */
+/** "2 × Pasta" with "€5.00 each" under it, read as "2 times Pasta, €5.00 each". Server prices. */
 export function OrderItemRow({
   quantity,
   name,
@@ -60,8 +60,12 @@ export function OrderItemRow({
       <View className="h-8 min-w-8 items-center justify-center rounded-full bg-canvas px-2">
         <Text className="text-caption font-semibold text-ink">{quantity}×</Text>
       </View>
-      <Text className="flex-1 text-body text-ink">{name}</Text>
-      {price ? <Caption>{t('payment.each', { price })}</Caption> : null}
+      {/* The price sits under the name, so a long German dish name keeps the full width and
+          never breaks inside a word at large text sizes. */}
+      <View className="flex-1 gap-0.5">
+        <Text className="text-body text-ink">{name}</Text>
+        {price ? <Caption>{t('payment.each', { price })}</Caption> : null}
+      </View>
     </View>
   );
 }

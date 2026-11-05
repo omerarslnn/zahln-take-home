@@ -26,7 +26,7 @@ export function ConnectionCheck() {
 
   return (
     <Card title={t('connection.title')}>
-      <Text className="text-base text-ink-muted">{t('connection.description')}</Text>
+      <Text className="text-body text-ink-muted">{t('connection.description')}</Text>
       {apiClient ? (
         <Pressable
           accessibilityRole="button"
@@ -50,7 +50,7 @@ export function ConnectionCheck() {
       <View accessibilityLiveRegion="polite" className="gap-1">
         {state.phase === 'done'
           ? describe(state.result, t, locale).map((line) => (
-              <Text key={line} className="text-base text-ink">
+              <Text key={line} className="text-body text-ink">
                 {line}
               </Text>
             ))
