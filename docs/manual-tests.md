@@ -31,6 +31,105 @@ Ground rules for every case:
    side by side.
 6. **Till on Android (alternative)**: `adb install -r` the till APK on the emulator or a second phone.
 
+## Final physical-device matrix (Phase 6)
+
+Run in this order; stop at the first failure and note it in `docs/progress.md`. **[W]** marks a
+step that writes to the live mock (an order, a payment or a refund); every other step only reads.
+Builds: student 7 and till 6 (`v1.0.0-final` release, or `artifacts/android/`), and the current
+source on the iPhone and the iPad.
+
+**Preparation**
+
+```sh
+# Pixel XL: install over build 6 (keeps its data)
+adb -s <serial> install -r artifacts/android/mensa-student-1.0.0-7-armeabi-v7a+arm64-v8a-4fe08aa.apk
+# iPhone 17 Pro: a native rebuild is required (build 7, and the English/German declarations iOS reads)
+pnpm --filter @mensa/student exec expo run:ios --device          # then: pnpm student (Metro 8081)
+# iPad A16: a native rebuild is recommended for the same reasons (build 6); the minimum is a Metro
+# restart with a cleared cache, which brings all JavaScript changes:
+pnpm --filter @mensa/till exec expo run:ios --device --port 8082 # then: pnpm till (Metro 8082)
+pnpm --filter @mensa/till exec expo start --port 8082 --clear    # minimum, without a rebuild
+```
+
+| #   | Device       | Steps                                                                                                                                  | Pass when                                                                                                                  |
+| --- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| F1  | Pixel        | After the install: open, sign in as Student.                                                                                           | History still lists the earlier payments (data kept); Diagnostics: "App version 1.0.0", "HTTP 200 in N ms" (whole number). |
+| F2  | Pixel        | Force stop; open; type `student` / `test1234`; sign in.                                                                                | Home. The keyboard never covers the focused field.                                                                         |
+| F3  | Pixel + iPad | **[W]** iPad: an order. Pixel: scan, review, "Pay", fingerprint.                                                                       | Both: being checked → Paid, same amount and price group.                                                                   |
+| F4  | Pixel        | New order; "Pay"; cancel the prompt.                                                                                                   | "Not paid: the confirmation was cancelled."; the iPad still waits.                                                         |
+| F5  | Pixel        | Review open; airplane mode on, then off (N9).                                                                                          | One notice, no "Pay"; "Pay" returns by itself.                                                                             |
+| F6  | Pixel        | Settings → System → Languages: Deutsch first; open the app; then back to English.                                                      | German everywhere, without a restart; then English.                                                                        |
+| F7  | Pixel        | Font size and display size largest; Home, review, history, detail.                                                                     | Everything wraps; the pay bar stays visible; nothing clipped.                                                              |
+| F8  | Pixel        | TalkBack procedure **SR1** below.                                                                                                      | All of SR1 passes.                                                                                                         |
+| F9  | iPhone       | **[W]** After the rebuild: an order on the iPad; scan; "Pay"; Face ID.                                                                 | Paid on both; the Face ID prompt names Mensa Pay's reason.                                                                 |
+| F10 | iPhone       | New order; "Pay"; cancel Face ID.                                                                                                      | "Not paid"; nothing on the iPad.                                                                                           |
+| F11 | iPhone       | **[W]** "Pay"; let Face ID fail (look away) until "Enter Passcode"; enter the passcode.                                                | The passcode is accepted and the payment completes once.                                                                   |
+| F12 | iPhone       | Settings → Mensa Pay → Language → Deutsch (appears after the rebuild); open the app.                                                   | The app is in German; the rest of the phone keeps its language.                                                            |
+| F13 | iPhone       | VoiceOver procedure **SR2** below.                                                                                                     | All of SR2 passes.                                                                                                         |
+| F14 | iPad         | Auto-Lock 2 minutes; **[W]** an order; wait 3 minutes; then Home button and back.                                                      | The screen stays on while the code is shown; in the background it locks; back: the same order.                             |
+| F15 | iPad         | **[W]** Pay it (F3 or F9), then refund €1.00, then "Refund everything left".                                                           | Both refunds complete; "Nothing is left to refund."; the phone's detail lists both.                                        |
+| F16 | iPad         | German (Settings → Mensa Till → Language, after a rebuild, or Diagnostics → Deutsch) and Larger Text largest; checkout, order, refund. | German; everything wraps; the code stays whole.                                                                            |
+| F17 | iPad         | VoiceOver procedure **SR3** below.                                                                                                     | All of SR3 passes.                                                                                                         |
+| F18 | Pixel + iPad | **[W]** Unresolved, safely: during "Payment is being checked" on the Pixel, airplane mode on for 30 s, then off.                       | It never shows "paid" or "declined" while offline; afterwards it settles to Paid; one payment on both devices.             |
+| F19 | Pixel        | **[W]** Pay; while "being checked", force stop the app; reopen; sign in.                                                               | Home lists the payment first as unfinished, then it settles; one payment only.                                             |
+| F20 | Desktop      | Dashboard D1 (keyboard only) and D2–D4 on https://zahln-mensa-dashboard-4ft.pages.dev/; open an exported CSV in a spreadsheet.         | Keyboard reaches everything with a visible focus ring; cells starting with `=`, `+`, `-` or `@` show as text.              |
+
+F18 and F19 are the safest device versions of an unresolved payment: a genuinely lost response
+cannot be produced on demand; that case is covered by the simulated-server tests
+(`intent-controller.test.ts`).
+
+### SR1: TalkBack on the Pixel XL (student build 7)
+
+1. Settings → Accessibility → TalkBack → on. Swipe right/left moves, double-tap activates,
+   two-finger swipe scrolls.
+2. Sign-in: each field is read with its label ("Username, edit box"), "Show password" as a button;
+   double-tap the demo row "Student, Enrolled at the university. Pays student prices."
+3. Home: "Scan to pay, button", then "Payment history".
+4. Scan: the camera explanation and "Allow camera"; then "Type the code instead": "Order code, edit
+   box"; type the code shown under the till's QR code; "Open order".
+5. Review: the mensa and till, each item as one phrase ("2 times Pasta with tomato sauce, €2.20
+   each"), "Amount to pay: €4.40", then "Pay €4.40, button" with the hint "Asks for your
+   fingerprint, face or device PIN first". Moving focus onto "Pay" does nothing by itself.
+6. **[W]** Double-tap "Pay"; the fingerprint prompt is read; touch the sensor.
+7. Result: focus moves to the heading; "Payment is being checked" and then "Paid" are each spoken
+   once, not repeated while it checks.
+8. History: each row is one phrase with its status ("Mensa am Campus, Confirmed, €4.40, 12:03 ·
+   Kasse 1"); the detail reads the amount, the refunds and the timeline.
+9. A second order: "Pay", then cancel the prompt: "Not paid: the confirmation was cancelled." is
+   spoken.
+10. Pass when every step works without looking, no element is unreachable or read twice, and nothing
+    happens on focus alone.
+
+### SR2: VoiceOver on the iPhone 17 Pro (student, development build)
+
+1. Settings → Accessibility → VoiceOver → on (or triple-click the side button after setting the
+   shortcut). Swipe to move, double-tap to activate, three-finger swipe to scroll.
+2. Repeat SR1 steps 2–5: the same labels and order; the amount and "Pay €…" are reachable.
+3. **[W]** Double-tap "Pay": Face ID is announced; look at the phone. The result heading gets
+   focus; "being checked" and "Paid" are each spoken once.
+4. Cancel case: "Pay", then cancel Face ID; the refusal is spoken.
+5. Switch to German (F12) and repeat steps 2–3: German labels, amounts as "4,40 €".
+6. Pass criteria as in SR1.
+
+### SR3: VoiceOver on the iPad A16 (till)
+
+1. VoiceOver on. Sign in with the demo row "Cashier 1, cashier-campus-1".
+2. Checkout, from the top: the header, then the whole menu before the order panel. Each dish is one
+   phrase with its three prices, then "Remove one …, button" (dimmed at 0), the count, "Add one …,
+   button" (A4).
+3. Add two dishes: the count is spoken after each double-tap; the order panel lists them, then
+   "Items: 2" and "Create order and show QR code, button".
+4. **[W]** Create the order: "QR code for this order. The payer scans it with Mensa Pay.", the order
+   code, "Waiting for payment" with the time left when focused (it is not read out every second),
+   then the totals per price group as one block after the status, in portrait and in landscape.
+5. **[W]** Pay it from a phone: "Payment being checked", then "Paid" spoken once each; "Next
+   customer" only then.
+6. Payments and refunds: each row one phrase with payer, status, amount and time; open one.
+7. Refund: "Refundable now: €…"; "Amount in euros, text field" with its hint; type more than
+   allowed: the error is read with the field; a valid amount → "Check refund" → the confirmation
+   question with the amount and the payer, "Refund €…" and "Cancel"; Cancel sends nothing.
+8. Pass criteria as in SR1.
+
 ## Sign-in (Phase 3; student build 5, till build 4)
 
 The published password is the API description's `test1234`. Signing in makes no payment or order.

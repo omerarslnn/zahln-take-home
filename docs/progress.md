@@ -1085,6 +1085,99 @@ physical-device QA).
 - VoiceOver on the iPad (A3, A4) and TalkBack (P13) in the final accessibility QA.
 - The student app's next build picks up the keyboard padding (`8af18c8`).
 
+## Phase 6: final QA and release preparation (2026-11-05)
+
+Audit, fixes of high-confidence defects only, the final Android builds, iOS release verification,
+the dashboard redeployment and the documentation for reviewers. No new feature, no live write.
+Baseline `8c47c61`; Phase 5's device results were recorded first (`b8c3835`).
+
+### Issues found
+
+| #   | Finding                                                                                                                                                                                                   | Severity               | Resolution                                                                                                                                                                                                                              |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | The till's active order in tablet portrait put the status card and the per-group totals side by side without separate reading groups, so Android could read the two cards line by line across both        | Medium (screen reader) | Fixed (`aea4dea`): each card is its own group (`collapsable={false}`, `importantForAccessibility="yes"`), as the other two-column layouts are. Till build 6                                                                             |
+| 2   | The deployed dashboard was older than the source (built 2026-11-02 from `7c08d2f`; the dashboard's session code and the shared packages changed in Phase 3–5)                                             | Medium (delivery)      | Redeployed from a clean build; the served files are byte-identical to a build of `4fe08aa`; browser check 40/40 on the URL                                                                                                              |
+| 3   | The iOS native projects on this Mac (and so the installed iPhone and iPad builds) predate Phase 3: no `CFBundleLocalizations` (iOS's per-app language setting and system texts in German), build number 3 | Medium (iOS release)   | Not changed on the devices (their signing setup is the owner's). A fresh prebuild in a separate worktree has English and German, the Face ID and camera texts and builds 7 / 6; the devices need `expo run:ios --device` (F9, F12, F16) |
+| 4   | Diagnostics showed the request time unrounded ("HTTP 200 in 266.31874999962747 ms") in all three apps                                                                                                     | Low (cosmetic)         | Fixed (`7f28082`): whole milliseconds                                                                                                                                                                                                   |
+| 5   | The dashboard had no automated keyboard check                                                                                                                                                             | Gap                    | Added (`72d11b9`): the browser check tabs through all 70 controls of the payments page with real key events, checks each focus indicator and label, and follows a link with Enter                                                       |
+| 6   | Stale documentation: Xcode version, the design document and the review guide described earlier states; the README was a development log                                                                   | Low                    | Rewritten to the final code (README, design, review guide, manual tests, this record, CLAUDE.md)                                                                                                                                        |
+
+Investigated and found not to be defects: the refund rows' status pill appears as its own node in
+`uiautomator` dumps, but the row hides its contents from screen readers (`no-hide-descendants`), so
+TalkBack does not stop on it; the first keyboard run failed on Chrome's Tab starting point and on
+date fields taking one Tab per part, which were faults of the check; the first iOS build failed in
+Xcode's script phase because the worktree sat under `/tmp` (a symlink), not because of the code.
+
+The tree had no TODO or FIXME markers, no tracked `.env`, keystore or provisioning file (also not
+in the history) and no Apple team ID.
+
+### Payment and refund safety: where each invariant is proven
+
+Deterministic tests against the simulated server, rerun in `pnpm check`; no rule changed in this
+phase. Refunds at the 24-hour boundary were already covered, so no test was added for them.
+
+| Invariant                                                                               | Where it is proven                                                                                                                                                    |
+| --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| One saved intent, one key, one body; saved before sending; nothing sent if saving fails | `intent-controller.test.ts`: "saves the intent before the request leaves…", "gives two rapid submissions one intent, one key and one request"                         |
+| Timeouts, `502`, `504`, empty or unreadable bodies are unknown, never failed or paid    | "recovers a payment the server recorded when the response was lost…", "never turns an empty 2xx body or a proxy error into success…", `write-outcome.test.ts`         |
+| No replay with a new key; nothing after the retention window                            | "beyond the key retention window it never replays…" (payments), "unresolved refunds stay unresolved…: no dismissal, deadline or restart settles them" (refunds, 25 h) |
+| Restart recovery, user isolation, account switch                                        | "after a restart, keeps the saved intent unknown…", "keeps an unknown payment recoverable across an account switch", `intent-store.test.ts`, `session.test.ts`        |
+| Biometric approval bound to user, order, amount and review                              | `payment-authorization.test.ts` (5 tests)                                                                                                                             |
+| Server-authoritative amounts and refund capacity                                        | "counts pending refunds against capacity and never creates a second refund after a lost response", `till-rules.test.ts` (never more than the server's refundable)     |
+| Monotonic versions                                                                      | `resource-cache.test.ts`, "does not regress a confirmed payment when a stale read arrives"                                                                            |
+| Fail-closed gate, `paymentsEnabled`, `minAppVersion`, foreground recovery               | `payment-gate.test.ts`, `gate-recovery.test.ts` (12, BUG-01), "blocks new payments by maintenance or version but keeps reconciling earlier ones"                      |
+| No uncontrolled retries                                                                 | Polling is bounded (1–10 s backoff, 3 minutes); gate re-reads at 5, 15, 30, 60 s; `gate-recovery.test.ts` "nothing runs away… nothing after dispose"                  |
+
+### Results by kind of evidence
+
+| Kind             | Check                                                                                                                                                                                                                                                                                         | Result                                                         |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| Automated        | `pnpm check` (format, type-aware lint, types in 6 workspaces, 282 tests, single instances, 39 identical native files, dashboard build) on `4fe08aa`                                                                                                                                           | passed                                                         |
+| Automated        | `pnpm bundle:native` on `4fe08aa`: four Hermes bundles; no preview screen, sample data or catalogue in them                                                                                                                                                                                   | passed                                                         |
+| Automated        | `expo install --check` (both apps)                                                                                                                                                                                                                                                            | passed                                                         |
+| Automated        | `pnpm dashboard:browser-check` on the deployed URL (final build): 40/40, including the keyboard pass and a complete export of 5,595 payments in 28 pages                                                                                                                                      | passed                                                         |
+| Automated        | Release APKs: manifests, permissions, ABIs, signing certificate, dev-client classes, URL schemes, SHA-256; the downloaded release assets match `SHA256SUMS.txt`                                                                                                                               | passed                                                         |
+| Emulator         | Student 7: clean install, typed sign-in, Home; build 6 → 7 with `install -r` (data kept, first install time unchanged), standalone start without Metro, history and a refunded payment's detail, Diagnostics (version 1.0.0, live configuration, no development entries)                      | passed                                                         |
+| Emulator         | Till 6: build 5 → 6 with `install -r`, standalone start, sign-in, checkout, this till's payments only, Diagnostics                                                                                                                                                                            | passed                                                         |
+| Simulator        | iOS: fresh prebuild of both apps in a separate worktree, Release builds for the simulator, installed and started on an iPhone 17 Pro and an iPad Pro 11-inch (iOS 26.5): sign-in screens; Info.plists with `en`/`de`, Face ID and camera texts (German strings in `de.lproj`), builds 7 and 6 | passed                                                         |
+| Physical (owner) | Phase 5's eight aggregate checks on the iPad A16 and the Pixel XL (above); earlier rounds in Phases 0, 1, 3 and 4                                                                                                                                                                             | passed                                                         |
+| Not run          | TalkBack on the Pixel XL, VoiceOver on the iPhone and the iPad (SR1–SR3 in [manual-tests.md](manual-tests.md))                                                                                                                                                                                | **not run: release blocker for the screen-reader requirement** |
+| Not run          | Student build 7 and till build 6 on the physical devices; the iOS device rebuilds; F1–F20                                                                                                                                                                                                     | not run                                                        |
+| Not run          | A genuinely lost response and a force stop with an unresolved payment on a device (simulated-server tests only; F18 and F19 are the safe device versions)                                                                                                                                     | not run                                                        |
+| Not run          | Keyboard on the Pixel with the system keyboard over the typed order code (the emulator's keyboard showed only its floating toolbar; the same `Screen` code was checked on the till in Phase 5)                                                                                                | not run                                                        |
+
+### Release artifacts
+
+| Artifact                                                  | Build     | Size       | SHA-256                                                            |
+| --------------------------------------------------------- | --------- | ---------- | ------------------------------------------------------------------ |
+| `mensa-student-1.0.0-7-armeabi-v7a+arm64-v8a-4fe08aa.apk` | student 7 | 50,197,533 | `b492f1baa6abeddba63a40089c5113231276851373805dc6b71a83f3a05f36f8` |
+| `mensa-till-1.0.0-6-armeabi-v7a+arm64-v8a-4fe08aa.apk`    | till 6    | 39,396,894 | `d16f7169abd7529bc49ab4ad7ec165b0acb3b0366cbec231f3a75817b3cfb248` |
+
+Both: package names, the signing certificate (SHA-256 `fac61745…`, the project's debug key) and the
+permissions are unchanged from builds 6 and 5; ABIs `arm64-v8a` (the Pixel XL) and `armeabi-v7a`;
+no `expo-dev-client` class and no `exp+` scheme. Built from a clean tree (no `-dirty`). The
+embedded Hermes bundle cannot be compared byte for byte with `expo export` (different Hermes
+output), so provenance is shown by the clean commit in the file name and the bundle's contents: the
+student bundle carries Phase 5's strings (absent from build 6) and no development screen. Kept:
+all earlier APKs, including a superseded `mensa-till-1.0.0-6-…-b8c3835-dirty.apk` (built while
+documents were being edited; same code as `b8c3835`).
+
+**Delivery**: a draft release `v1.0.0-final` (target `4fe08aa`) on the private repository holds
+both APKs and `SHA256SUMS.txt`; downloaded again with `gh release download` and checked. A draft is
+visible only to collaborators with write access and creates no tag; it needs the owner's approval
+to publish, and reviewers need to be invited to the repository to download it.
+
+**Dashboard**: https://zahln-mensa-dashboard-4ft.pages.dev/ serves the build of `4fe08aa`
+(`index.html`, JavaScript and CSS byte-identical to the local build).
+
+### Remaining
+
+- **Blocker for the screen-reader requirement**: SR1 (TalkBack, Pixel XL), SR2 (VoiceOver,
+  iPhone), SR3 (VoiceOver, iPad).
+- The final physical matrix F1–F20 ([manual-tests.md](manual-tests.md)), including the iOS device
+  rebuilds.
+- The owner's approval to publish the release and invite the reviewers.
+
 ## Manual steps
 
 1. **pnpm on PATH**: `corepack enable pnpm` (undo: `corepack disable pnpm`), or prefix commands with
@@ -1095,15 +1188,16 @@ physical-device QA).
    Metro. It is public mock data, inlined into the apps and the dashboard.
 3. **Pixel XL (student)**: enable USB debugging; `adb devices -l`;
    `adb shell getprop ro.product.cpu.abilist` (expect `arm64-v8a,…`); then
-   `adb -s <serial> install -r artifacts/android/mensa-student-1.0.0-6-armeabi-v7a+arm64-v8a-fabfdae.apk`
-   (build 6, Phase 4). It replaces an earlier build in place and keeps its data. Set a PIN and enrol
+   `adb -s <serial> install -r artifacts/android/mensa-student-1.0.0-7-armeabi-v7a+arm64-v8a-4fe08aa.apk`
+   (build 7, Phase 6). It replaces an earlier build in place and keeps its data. Set a PIN and enrol
    a fingerprint, then follow [manual-tests.md](manual-tests.md).
 4. **iPad (till)**: development build once with
    `pnpm --filter @mensa/till exec expo run:ios --device --port 8082`, then `pnpm till` (Metro 8082)
-   and open Mensa Till. Phase 5 needs no new build (the installed one already links keep-awake),
-   only a Metro restart with a cleared cache:
+   and open Mensa Till. Phase 6 recommends that native rebuild once more (build 6 and the English
+   and German declarations iOS reads, which the installed build predates); the minimum, which brings
+   every JavaScript change, is a Metro restart with a cleared cache:
    `pnpm --filter @mensa/till exec expo start --port 8082 --clear`. Android till:
-   `adb install -r artifacts/android/mensa-till-1.0.0-5-armeabi-v7a+arm64-v8a-7613cd8.apk` (build 5). Alternative: the App Store's Expo Go (it supports SDK 54): `pnpm till`, press
+   `adb install -r artifacts/android/mensa-till-1.0.0-6-armeabi-v7a+arm64-v8a-4fe08aa.apk` (build 6). Alternative: the App Store's Expo Go (it supports SDK 54): `pnpm till`, press
    `s`, scan the terminal's QR with the iPad camera.
 5. **iPhone 17 Pro (student with Face ID)**: Expo Go cannot use Face ID, so this needs a development
    build. Xcode → Settings → Accounts → add your Apple ID (a free personal team works; profiles last
@@ -1121,11 +1215,9 @@ physical-device QA).
 
 ## Remaining for stage 5: submission
 
-1. The UI polish phases agreed on 2026-11-04: the design system (Phase 2), sign-in with the device
-   language (Phase 3), the student screens (Phase 4; 7 of 8 device checks passed, TalkBack not run)
-   and the till screens (Phase 5, awaiting K1–K14 and E1–E10 on the iPad) are done; the final QA
-   and release phase follows.
-2. Device checks not run yet: TalkBack, VoiceOver, maximum font sizes, N6 with a genuinely
-   unresolved payment, and the other rows listed under "Not run on a device"; the dashboard's D1–D4.
-3. Final read-through of the README and [design.md](design.md); invite the reviewers; rehearse the
-   review with [review-guide.md](review-guide.md).
+1. The screen-reader checks SR1–SR3 and the final device matrix F1–F20
+   ([manual-tests.md](manual-tests.md)): the screen-reader pay flow is a hard requirement, so the
+   submission waits for SR1–SR3.
+2. The owner's approval: publish the draft release `v1.0.0-final`, invite the reviewers, send the
+   submission.
+3. Rehearse the review with [review-guide.md](review-guide.md), "The 45-minute call".

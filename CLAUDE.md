@@ -36,8 +36,12 @@ native primitives, `docs/design-system.md`) is approved. Phase 3 (typed and demo
 checked before a session is published, the apps following the device language; student build 5,
 till build 4) passed eight smoke checks on the Pixel XL. Phase 4 (the student screens redesigned,
 student build 6) passed 7 of 8 Pixel XL checks (TalkBack deferred, not run). Phase 5 (the till
-screens redesigned, `expo-keep-awake`, till build 5) is done and awaits the owner's iPad pass
-(K1–K14, E1–E10 in `docs/manual-tests.md`); the final QA and release phase is not started.
+screens redesigned, `expo-keep-awake`, till build 5) passed eight aggregate checks on the iPad and
+the Pixel XL. Phase 6 (final QA and release preparation: student build 7, till build 6, the
+dashboard redeployed from `4fe08aa`, the APKs in the draft release `v1.0.0-final`) is done locally
+and awaits the owner's device matrix F1–F20 and the screen-reader checks SR1–SR3
+(`docs/manual-tests.md`), which block the submission. Do not publish the release, invite reviewers
+or submit without the owner's approval.
 
 Live writes go only through intents (the apps, `pnpm api:order-probe`, `pnpm api:payment-probe`) and
 only when the current stage authorizes them; record each one in the ledger in `docs/api-notes.md`.
@@ -118,12 +122,13 @@ dashboard; 12 is implemented as a device gate.
 
 ## Conventions
 
-- Strict TypeScript everywhere. Expo SDK 54 is pinned on purpose: this Mac has Xcode 26.1.1 and
-  SDK 55+ needs Xcode 26.2+ (see README). React 19.1.0 everywhere, exact pins.
+- Strict TypeScript everywhere. Expo SDK 54 is pinned on purpose: it was the newest SDK the Mac's
+  Xcode (then 26.1.1) could build; the Mac now has Xcode 26.6, but an SDK upgrade is its own change,
+  not part of the review. React 19.1.0 everywhere, exact pins.
 - App version: `expo.version` in `apps/*/app.json` (1.0.0, the server's `minAppVersion`), read at
   runtime as `appVersion` in `apps/*/src/api.ts` and sent as `X-App-Version`. Bump it there; generated
   native projects pick it up on the next `expo prebuild --clean`. Raise `android.versionCode` and
-  `ios.buildNumber` (now student 6, till 5) for each build handed to a device.
+  `ios.buildNumber` (now student 7, till 6) for each build handed to a device.
 - Payment availability: `GateRecovery` (`@mensa/domain`) decides when `GET /config` is read again
   (start-up, foreground, connection back, a few spaced retries after a failed read, the user's
   "check again"); only the server's answer opens the gate, and only its newest read counts. The

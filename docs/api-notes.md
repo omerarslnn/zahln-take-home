@@ -33,7 +33,10 @@ controls are assumed.
 Every write sent to the mock (candidate `c_5b3ceacafb`) by the scripts and the test runs in this
 repository. All went through the intent mechanism: saved with its idempotency key before sending,
 reused on a retry. Local evidence: `.local/` (git-ignored). Not itemized: the owner's physical-device
-tests on 2026-11-04 (payments, orders and refunds; see [progress.md](progress.md), Phase 0).
+tests on 2026-11-04 (payments, orders and refunds; see [progress.md](progress.md), Phase 0) and on
+2026-11-05 (one payment in the Phase 4 checks; orders, payments, partial and full refunds and an
+expired order in the Phase 5 checks). Phases 2–6 made no scripted or emulator write: their emulator
+runs only read and signed in.
 
 | When (Berlin)     | Who                       | Write                                                   | Resource                                       | Result                                         |
 | ----------------- | ------------------------- | ------------------------------------------------------- | ---------------------------------------------- | ---------------------------------------------- |
