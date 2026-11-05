@@ -1,13 +1,17 @@
 import type { Payment, PaymentDetail } from '@mensa/api';
 import { formatBerlinTime } from '@mensa/shared';
 import { useI18n } from '@mensa/shared/react';
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { Icon } from '../components/Icon';
 import {
   BerlinTime,
   Button,
-  linkClass,
+  ButtonLink,
+  cardClass,
+  FOCUS,
   Money,
   Notice,
+  PageActions,
   Section,
   StatusBadge,
   TableScroll,
@@ -33,26 +37,31 @@ export function PaymentPage({ paymentId, back }: { paymentId: string; back: stri
 
   return (
     <>
+      <PageActions>
+        <Button
+          tone="secondary"
+          icon="refresh"
+          busy={request.loading}
+          onClick={() => void reload()}
+        >
+          {t('finance.refresh')}
+        </Button>
+      </PageActions>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <a href={back ?? '#/transactions'} className={linkClass}>
+        <ButtonLink href={back ?? '#/transactions'} tone="tertiary" icon="arrowLeft">
           {t(
             back?.startsWith('#/attention')
               ? 'finance.payment.backAttention'
               : 'finance.payment.backList',
           )}
-        </a>
-        <div className="flex flex-wrap items-center gap-3">
-          <p role="status" className="text-sm text-ink-muted">
-            {request.loading
-              ? t('finance.payment.loading')
-              : fetched
-                ? t('finance.payment.fetched', { time: fetched })
-                : ''}
-          </p>
-          <Button tone="secondary" busy={request.loading} onClick={() => void reload()}>
-            {t('finance.refresh')}
-          </Button>
-        </div>
+        </ButtonLink>
+        <p role="status" className="text-caption text-ink-muted">
+          {request.loading
+            ? t('finance.payment.loading')
+            : fetched
+              ? t('finance.payment.fetched', { time: fetched })
+              : ''}
+        </p>
       </div>
 
       {request.failure && !view ? (
@@ -91,54 +100,76 @@ export function PaymentPage({ paymentId, back }: { paymentId: string; back: stri
 function PaymentSummary({ payment }: { payment: Payment }) {
   const { t } = useI18n();
   return (
-    <Section id="payment-summary" title={t('finance.payment.summary')}>
-      <div className="flex flex-wrap gap-2">
-        {paymentBadges(payment).map((badge) => (
-          <StatusBadge key={badge.key} badge={badge} />
-        ))}
+    <section aria-labelledby="payment-summary" className="grid gap-4 lg:grid-cols-3">
+      <h2 id="payment-summary" className="sr-only">
+        {t('finance.payment.summary')}
+      </h2>
+      <div className={`${cardClass} space-y-5 p-6 lg:col-span-2`}>
+        <div className="flex flex-wrap items-center gap-2">
+          {paymentBadges(payment).map((badge) => (
+            <StatusBadge key={badge.key} badge={badge} />
+          ))}
+        </div>
+        <div>
+          <p className="text-caption font-semibold text-ink-muted">{t('finance.payment.amount')}</p>
+          <p className="text-display font-bold text-ink">
+            <Money cents={payment.amountCents} />
+          </p>
+          <p className="text-ink-muted">
+            {t('finance.payment.priceGroup')}: {t(`finance.priceGroup.${payment.priceGroup}`)}
+          </p>
+        </div>
+        <dl className="grid gap-x-8 gap-y-4 border-t border-line-subtle pt-5 sm:grid-cols-2">
+          <Fact label={t('finance.payment.payer')}>
+            {payment.payer.displayName} <code className="text-caption">({payment.payer.id})</code>
+          </Fact>
+          <Fact label={t('finance.payment.place')}>
+            {payment.mensa.name} · {payment.till.name}
+          </Fact>
+          <Fact label={t('finance.payment.created')}>
+            <BerlinTime value={payment.createdAt} />
+          </Fact>
+          <Fact label={t('finance.payment.updated')}>
+            <BerlinTime value={payment.updatedAt} />
+          </Fact>
+          <Fact label={t('finance.payment.id')}>
+            <Identifier value={payment.id} what={t('finance.payment.id')} />
+          </Fact>
+          <Fact label={t('finance.payment.orderId')}>
+            <Identifier value={payment.orderId} what={t('finance.payment.orderId')} />
+          </Fact>
+          <Fact label={t('finance.payment.version')}>{payment.version}</Fact>
+        </dl>
       </div>
-      <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Amount label={t('finance.payment.amount')} cents={payment.amountCents} />
+      <dl className={`${cardClass} divide-y divide-line-subtle self-start px-6 py-2`}>
         <Amount label={t('finance.payment.refunded')} cents={payment.refundedAmountCents} />
         <Amount
           label={t('finance.payment.refundPending')}
           cents={payment.pendingRefundAmountCents}
         />
-        <Amount label={t('finance.payment.refundable')} cents={payment.refundableAmountCents} />
+        <Amount
+          label={t('finance.payment.refundable')}
+          cents={payment.refundableAmountCents}
+          strong
+        />
       </dl>
-      <dl className="grid gap-x-6 gap-y-2 sm:grid-cols-[auto_1fr]">
-        <Fact label={t('finance.payment.id')}>
-          <code>{payment.id}</code>
-        </Fact>
-        <Fact label={t('finance.payment.orderId')}>
-          <code>{payment.orderId}</code>
-        </Fact>
-        <Fact label={t('finance.payment.payer')}>
-          {payment.payer.displayName} (<code>{payment.payer.id}</code>)
-        </Fact>
-        <Fact label={t('finance.payment.priceGroup')}>
-          {t(`finance.priceGroup.${payment.priceGroup}`)}
-        </Fact>
-        <Fact label={t('finance.payment.place')}>
-          {payment.mensa.name} · {payment.till.name}
-        </Fact>
-        <Fact label={t('finance.payment.created')}>
-          <BerlinTime value={payment.createdAt} />
-        </Fact>
-        <Fact label={t('finance.payment.updated')}>
-          <BerlinTime value={payment.updatedAt} />
-        </Fact>
-        <Fact label={t('finance.payment.version')}>{payment.version}</Fact>
-      </dl>
-    </Section>
+    </section>
   );
 }
 
-function Amount({ label, cents }: { label: string; cents: number }) {
+function Amount({
+  label,
+  cents,
+  strong = false,
+}: {
+  label: string;
+  cents: number;
+  strong?: boolean;
+}) {
   return (
-    <div className="rounded-control border border-line/30 p-3">
-      <dt className="text-sm text-ink-muted">{label}</dt>
-      <dd className="text-xl font-bold">
+    <div className="flex items-baseline justify-between gap-4 py-4">
+      <dt className="text-ink-muted">{label}</dt>
+      <dd className={`text-headline ${strong ? 'font-bold' : 'font-semibold'} text-ink`}>
         <Money cents={cents} />
       </dd>
     </div>
@@ -147,17 +178,55 @@ function Amount({ label, cents }: { label: string; cents: number }) {
 
 function Fact({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <>
-      <dt className="text-ink-muted">{label}</dt>
-      <dd>{children}</dd>
-    </>
+    <div className="min-w-0 space-y-0.5">
+      <dt className="text-caption font-semibold text-ink-muted">{label}</dt>
+      <dd className="break-words text-ink">{children}</dd>
+    </div>
+  );
+}
+
+/** An ID in a monospace font, with a copy button where the browser allows the clipboard. */
+function Identifier({ value, what }: { value: string; what: string }) {
+  const { t } = useI18n();
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 2_000);
+    return () => clearTimeout(timer);
+  }, [copied]);
+  const canCopy = window.isSecureContext && 'clipboard' in navigator;
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1">
+      <code className="break-all">{value}</code>
+      {canCopy ? (
+        <>
+          <button
+            type="button"
+            aria-label={t('finance.copy', { what })}
+            title={t('finance.copy', { what })}
+            onClick={() =>
+              void navigator.clipboard.writeText(value).then(
+                () => setCopied(true),
+                () => undefined,
+              )
+            }
+            className={`inline-flex min-h-touch min-w-touch items-center justify-center rounded-control text-brand hover:bg-brand-subtle ${FOCUS}`}
+          >
+            <Icon name={copied ? 'check' : 'copy'} size={18} />
+          </button>
+          <span aria-live="polite" className="sr-only">
+            {copied ? t('finance.copied', { what }) : ''}
+          </span>
+        </>
+      ) : null}
+    </span>
   );
 }
 
 function ItemsTable({ detail }: { detail: PaymentDetail }) {
   const { t, locale } = useI18n();
   return (
-    <Section id="payment-items" title={t('finance.payment.items')}>
+    <Section id="payment-items" title={t('finance.payment.items')} flush>
       <TableScroll label={t('finance.payment.items')}>
         <table className="w-full min-w-[30rem] border-collapse">
           <caption className="sr-only">{t('finance.payment.items')}</caption>
@@ -206,9 +275,9 @@ function ItemsTable({ detail }: { detail: PaymentDetail }) {
 function RefundsTable({ detail }: { detail: PaymentDetail }) {
   const { t } = useI18n();
   return (
-    <Section id="payment-refunds" title={t('finance.payment.refunds')}>
+    <Section id="payment-refunds" title={t('finance.payment.refunds')} flush>
       {detail.refunds.length === 0 ? (
-        <p>{t('finance.payment.noRefunds')}</p>
+        <p className="px-5 pb-4 text-ink-muted">{t('finance.payment.noRefunds')}</p>
       ) : (
         <TableScroll label={t('finance.payment.refunds')}>
           <table className="w-full min-w-[44rem] border-collapse">
@@ -239,7 +308,7 @@ function RefundsTable({ detail }: { detail: PaymentDetail }) {
               {detail.refunds.map((refund) => (
                 <tr key={refund.id}>
                   <th scope="row" className={`${td} text-left font-normal`}>
-                    <code>{refund.id}</code>
+                    <code className="text-caption">{refund.id}</code>
                   </th>
                   <td className={tdNumber}>
                     <Money cents={refund.amountCents} />
@@ -268,22 +337,30 @@ function RefundsTable({ detail }: { detail: PaymentDetail }) {
 function HistoryList({ detail }: { detail: PaymentDetail }) {
   const { t } = useI18n();
   return (
-    <Section id="payment-history" title={t('finance.payment.history')}>
-      <p className="text-sm text-ink-muted">{t('finance.payment.historyOrder')}</p>
-      <ol className="space-y-2">
+    <Section
+      id="payment-history"
+      title={t('finance.payment.history')}
+      description={t('finance.payment.historyOrder')}
+    >
+      <ol className="relative space-y-4 border-l-2 border-line-subtle pl-6">
         {detail.history.map((event, index) => (
-          <li
-            key={`${event.at}-${event.type}-${index}`}
-            className="flex flex-wrap items-baseline gap-x-3 border-l-4 border-line/40 pl-3"
-          >
-            <BerlinTime value={event.at} />
-            <span className="font-semibold">{t(historyEventKey(event.type))}</span>
-            {event.amountCents !== null ? <Money cents={event.amountCents} /> : null}
-            {event.refundId ? (
-              <span className="text-sm text-ink-muted">
-                {t('finance.payment.refundRef')} <code>{event.refundId}</code>
-              </span>
-            ) : null}
+          <li key={`${event.at}-${event.type}-${index}`} className="relative">
+            <span
+              aria-hidden="true"
+              className="absolute -left-[33px] top-1 h-4 w-4 rounded-full border-2 border-brand bg-surface"
+            />
+            <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span className="font-semibold text-ink">{t(historyEventKey(event.type))}</span>
+              {event.amountCents !== null ? <Money cents={event.amountCents} /> : null}
+            </p>
+            <p className="flex flex-wrap gap-x-3 text-caption text-ink-muted">
+              <BerlinTime value={event.at} />
+              {event.refundId ? (
+                <span>
+                  {t('finance.payment.refundRef')} <code>{event.refundId}</code>
+                </span>
+              ) : null}
+            </p>
           </li>
         ))}
       </ol>
