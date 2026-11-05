@@ -951,9 +951,27 @@ action), `after-*` (live and sample-data states, English and German, 130 % and 2
   hidden from screen readers because the button's hint says the same; announcements are unchanged
   (one per change, focused screen only).
 
+### Physical-device results (Pixel XL, Android 10, student build 6, 2026-11-05)
+
+Run by the owner: 7 of 8 acceptance checks passed; TalkBack was deferred to the final accessibility
+QA on purpose and is **not run** (not passed).
+
+| #   | Check                                                            | Manual test | Result                                       |
+| --- | ---------------------------------------------------------------- | ----------- | -------------------------------------------- |
+| 1   | Home and "Scan to pay"                                           | P1, P2      | passed                                       |
+| 2   | A real till QR scan and the correct payment review               | P2, P3      | passed                                       |
+| 3   | A fingerprint-authorized payment and its confirmation            | P4          | passed (one real payment)                    |
+| 4   | A cancelled authorization creates no payment                     | P5          | passed                                       |
+| 5   | Automatic foreground internet recovery (BUG-01 stays fixed)      | P6          | passed                                       |
+| 6   | Payment history and payment detail, including refund information | P7, P9      | passed                                       |
+| 7   | German texts and the maximum font size                           | P10, P11    | passed                                       |
+| 8   | TalkBack on the history and a result                             | P13         | not run (deferred to final accessibility QA) |
+
+Not part of this run: P8 (the history offline) and P12 (removed animations).
+
 ### Remaining
 
-- The owner's Pixel XL pass P1–P13 ([manual-tests.md](manual-tests.md)), including one real payment.
+- TalkBack (P13), P8 and P12 on the Pixel XL; the final accessibility QA.
 - The emulator was run headless (`-no-window`) after its window was closed twice in Phase 3, and its
   DNS stopped resolving once after a long pause (restarted with explicit DNS servers).
 
