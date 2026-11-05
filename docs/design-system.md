@@ -184,16 +184,17 @@ setting; worth adding with the next native change if wanted.
 
 ## Dependencies
 
-| Decision                                         | Why                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Accepted**: `@expo/vector-icons` 15 (Ionicons) | Already installed as a dependency of `expo` (the same 15.1.1; `expo install --check` passes), no native code: the font loads through `expo-font`, which both apps already link. One coherent icon family for iOS and Android. Cost: the Ionicons font (390 kB, compressed in the APK) and its 36 kB glyph map; arm64 release APKs grew 276 kB (student, against build 4) and 281 kB (till, against build 3), permissions unchanged. |
-| Rejected: `react-native-svg` icon sets           | It duplicated `react-native-css-interop` before (an optional peer that differed between the apps), which breaks NativeWind.                                                                                                                                                                                                                                                                                                         |
-| Rejected: custom fonts                           | System fonts are faster, need no loading and match each platform.                                                                                                                                                                                                                                                                                                                                                                   |
-| Rejected: Lottie or an animation framework       | Nothing needs it; Reanimated is already present.                                                                                                                                                                                                                                                                                                                                                                                    |
-| Deferred: haptics, keep-awake                    | Belong to the feature phases that need them (confirming a payment, the till's QR screen).                                                                                                                                                                                                                                                                                                                                           |
-| Rejected: Jest + React Native Testing Library    | A Babel/Jest stack beside `node:test` for a handful of assertions; the primitives' decisions are pure functions tested in Node, and their structure is enforced by types (`Notice` has no children).                                                                                                                                                                                                                                |
-| Rejected: a shared native UI package             | See below.                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| Possible later: a subset icon font               | The app uses about 15 of 1,300 glyphs; a subset font would save most of the 390 kB, at the cost of a generated asset to maintain.                                                                                                                                                                                                                                                                                                   |
+| Decision                                         | Why                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Accepted**: `@expo/vector-icons` 15 (Ionicons) | Already installed as a dependency of `expo` (the same 15.1.1; `expo install --check` passes), no native code: the font loads through `expo-font`, which both apps already link. One coherent icon family for iOS and Android. Cost: the Ionicons font (390 kB, compressed in the APK) and its 36 kB glyph map; arm64 release APKs grew 276 kB (student, against build 4) and 281 kB (till, against build 3), permissions unchanged.                                                                                             |
+| Rejected: `react-native-svg` icon sets           | It duplicated `react-native-css-interop` before (an optional peer that differed between the apps), which breaks NativeWind.                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Rejected: custom fonts                           | System fonts are faster, need no loading and match each platform.                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Rejected: Lottie or an animation framework       | Nothing needs it; Reanimated is already present.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| **Accepted**: `expo-keep-awake` ~15.0.8 (till)   | Keeps the till's screen on while a shown order can still be paid (`keepAwakeWanted` in `till-rules.ts`: focused screen, app in the foreground, order `open` or `paying`), released when the order ends, the screen loses focus or the app leaves the foreground. The SDK 54 version; already linked through `expo` (build 4's dex and the iPad build's `Podfile.lock` contain it), so no native change, no permission (Android's `FLAG_KEEP_SCREEN_ON`, iOS's idle timer) and +25 kB in the till APK (build 5 against build 4). |
+| Deferred: haptics                                | Nothing needs it yet (confirming a payment uses the system prompt).                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Rejected: Jest + React Native Testing Library    | A Babel/Jest stack beside `node:test` for a handful of assertions; the primitives' decisions are pure functions tested in Node, and their structure is enforced by types (`Notice` has no children).                                                                                                                                                                                                                                                                                                                            |
+| Rejected: a shared native UI package             | See below.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Possible later: a subset icon font               | The app uses about 15 of 1,300 glyphs; a subset font would save most of the 390 kB, at the cost of a generated asset to maintain.                                                                                                                                                                                                                                                                                                                                                                                               |
 
 ## Sign-in screens (Phase 3)
 
@@ -258,6 +259,43 @@ data. Patterns the screens share:
 - **Large text**: everything wraps; unit prices sit under the dish name so long German words never
   break inside a word (seen at 200 % before the change).
 
+## Till screens (Phase 5)
+
+The till keeps its containers (the basket rules, the order intent, recovery, refunds) and gains
+pure views for checkout, the active order, payments, the detail and the refund panel, previewed from
+sample data in **Till screen states** (Diagnostics, development builds only). Patterns:
+
+- **Tablet first, one column on a phone**: from 768 dp the checkout puts the menu (3/5) and the
+  order (2/5) side by side, each in its own scroll area and its own screen-reader group; on a phone
+  the order follows the menu and "Create order and show QR code" sits in the bottom bar with the
+  item count. The payment detail puts the server's summary left and the refund panel right.
+- **Menu rows**: the dish with Student, Staff and Guest prices from the server (one spoken phrase),
+  56 dp − and + with the count between them, the row tinted while it is in the order. Rows are
+  memoised and the callbacks stable, so a tap re-renders one row and the order panel. The order
+  panel shows lines and the item count, never a total: the price depends on who pays.
+- **The active order**: the QR code as large as the space allows (`qrSide`: 200–560 dp, measured
+  with `onLayout`, nothing drawn over it) with the order code under it for typing, a status card
+  (waiting, being checked, paid, expired, unresolved; icon and words) and the server's total per
+  price group. The countdown follows server time and is its own component, the only part that
+  ticks every second; it turns to the warning colour in the last minute. Paid shows the payer's
+  amount and price group. "Next customer" appears only once the order is final; there is no
+  cancel (the API has none). Portrait: the code full width, status and totals beside each other
+  under it; landscape: the code left, status and totals right.
+- **Keep-awake** only while it helps: see _Dependencies_.
+- **Payments**: a search by the start of a payment, order or payer ID (a tag and "Show all payments"
+  while it applies), Berlin-day headings, grouped rows (payer, status, time, price group, refunds,
+  payment ID, amount), pull to refresh, "Load older payments", skeleton, empty and no-match states.
+- **Refunds**: the server's "Refundable now" as the panel's hero (pending refunds already reserved);
+  "Refund everything left" fills the amount; the amount field validates as you type (format, zero,
+  more than the server allows) and the reason shows its length; "Check refund" opens an explicit
+  confirmation naming the amount and the payer, with a danger "Refund €…" and "Cancel". The
+  confirmation holds only while the server's newest remainder still covers the amount. One
+  submission at a time; every refund this till started stays listed with its state until it is
+  final, with "Send again safely" for an unknown outcome (same key, same payload).
+- **Keyboard**: `Screen` pads for the keyboard on Android as well (edge-to-edge apps no longer
+  shrink their window for it), so the refund amount, the reason and "Check refund" stay reachable on
+  a phone.
+
 ## Two apps, one set of primitives
 
 The student app and the till keep identical copies of the primitives (`components/ui/`), the
@@ -287,8 +325,8 @@ The tests live with the student copy only.
 9. Every string goes through `t()` with an English and a German entry; screens never offer a
    language switch (the app follows the device; see _Language_).
 
-**Not migrated yet** (the till's redesign phase): the till's screens still use raw Tailwind classes
-for their titles and some rows (`text-2xl` headers, `border-line` dividers in the menu), and its
-payment rows nest an accessible status pill inside a button. The student screens were migrated in
-Phase 4; their history rows now speak the status ("Mensa am Campus, Confirmed, €7.20, 17:03 ·
-Kasse 1", seen in the Android accessibility tree).
+Both apps' screens are on the system since Phase 5 (the till's titles, menu dividers and payment
+rows were the last raw classes); payment rows in both apps speak their status (student: "Mensa am
+Campus, Confirmed, €7.20, 17:03 · Kasse 1"; till: "Test Student, Confirmed, €10.00, 13:53 · Student
+price · pay_…", seen in the Android accessibility tree). The QR code alone draws pure black on white,
+outside the tokens: it needs full contrast whatever the theme.

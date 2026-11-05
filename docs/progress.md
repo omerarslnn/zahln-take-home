@@ -975,6 +975,97 @@ Not part of this run: P8 (the history offline) and P12 (removed animations).
 - The emulator was run headless (`-no-window`) after its window was closed twice in Phase 3, and its
   DNS stopped resolving once after a long pause (restarted with explicit DNS servers).
 
+## Phase 5: the till redesign (2026-11-05)
+
+Checkout, the active order, payments, the payment detail and refunds rebuilt on the design system
+for the iPad first, in four commits plus a polish commit. Each screen is a container (its existing
+rules, unchanged) and a pure view, previewed in **Till screen states** (Diagnostics, development
+builds only); see [design-system.md](design-system.md), "Till screens (Phase 5)". Baseline
+`90dcfa9`; Phase 4's device results were recorded first (`0d11e91`).
+
+### What changed
+
+| Commit    | Screens                   | Changes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| --------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `5b34cce` | Checkout                  | The till's own header (mark, mensa · till, signed-in cashier; Payments, Switch cashier, Diagnostics). From 768 dp the menu (3/5) and the order (2/5) side by side, each in its own scroll area and screen-reader group; on a phone one column with "Create order and show QR code" and the item count in the bottom bar. Memoised menu rows with each group's server price and 56 dp − / + (the row tinted while in the order); the order panel with lines, "Items: N" and the price note, never a total; menu skeleton, offline and empty states. The basket rules, product IDs, the 20-per-dish limit and the create intent are unchanged; the till's tests now run in `pnpm test`.                                     |
+| `449c0ad` | Active order              | A large QR code sized to the space (`qrSide`, 200–560 dp, measured), the order code under it, a status card (waiting, being checked, paid, expired, unresolved), the server-time countdown in its own component (the only part that ticks each second; warning colour in the last minute), the server's totals per group, the payer's amount and price group once paid, "Next customer" only after a final answer. Portrait: code full width, status and totals under it; landscape: two columns. No cancellation (no endpoint). `expo-keep-awake` keeps the screen on only while a shown order can be paid. Development-only "Till screen states".                                                                       |
+| `c69be66` | Payments, detail, refunds | Payments: ID search with a tag and "Show all payments", Berlin-day headings, grouped memoised rows that speak payer, status, amount, time, price group, refunds and payment ID; pull to refresh, older pages, skeleton, empty and no-match states. Detail: the student's summary cards (now shared) with the payer, beside a refund panel: the server's "Refundable now", "Refund everything left", a validated amount (format, zero, more than the server allows) and reason (length shown), an explicit confirmation naming amount and payer that holds only while the server's remainder covers it, a synchronous guard against a second submission, every refund this till started listed with its state until final. |
+| `8af18c8` | Keyboard (both apps)      | `Screen` pads for the keyboard on Android too: SDK 54 apps are edge to edge and no longer shrink their window for it, so the refund amount on a phone stayed under the keyboard. Pads only by the actual overlap, so nothing is added twice where the window still resizes. A shared primitive: the student app gets it with its next build (build 6 does not have it).                                                                                                                                                                                                                                                                                                                                                   |
+| `7613cd8` | Polish                    | The till's Diagnostics title on the type scale; the QR code's note on what redraws it.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+
+### What did not change
+
+`packages/domain`, `packages/api`, the contract copy, the till's `src/payments/` wiring (the order
+intent, persisted records, unknown outcomes and safe resend, session renewal and role checks) and
+the dashboard have no diff against `90dcfa9`; `git diff 90dcfa9 -- packages/domain packages/api
+apps/dashboard apps/till/src/payments apps/student/src/payments` is empty. The containers keep their
+logic; the refund container gained only the double-tap guard and the confirmation's limit. The
+student app changed only in shared code: the detail cards moved into `PaymentSummary.tsx` (no visual
+change), its row text gained a till perspective (its own rows unchanged, tested) and the keyboard
+padding. No live order, payment or refund was made in this phase.
+
+### Dependency: `expo-keep-awake ~15.0.8` (till)
+
+Keeps the screen on while a shown order can still be paid: `keepAwakeWanted` is true only for a
+focused order screen, an app in the foreground and an order that is `open` or `paying`; the effect
+deactivates its tag (`till-order-qr`) when that ends (paid, expired, unresolved, "Next customer",
+navigation away, background). Impact: no native code (it was already linked through `expo`: build
+4's dex contains it, and the iPad development build's `Podfile.lock` lists `ExpoKeepAwake 15.0.8`),
+no permission (Android's `FLAG_KEEP_SCREEN_ON`, iOS's idle timer), +25 kB in the till APK.
+
+**The iPad needs no new native build**: the development build installed from the 2026-11-04
+`Podfile.lock` already contains the module. Metro must restart, though: the `pnpm till` running
+since 13:48 started before the package was linked into `apps/till` (14:14). Stop it, then
+`pnpm --filter @mensa/till exec expo start --port 8082 --clear`, and reopen Mensa Till (or shake →
+Reload).
+
+### Tests (+9, 282 in total)
+
+| File                                        | Tests                                                                                                                                                                                                                                                                                                                                      |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `apps/till/src/till-rules.test.ts`          | keep-awake only for a focused, foreground screen with an `open` or `paying` order; the QR size within its limits; the basket count and lines without any amount; refund amounts with a comma or a point, never more than the server's refundable amount, every problem named, the remaining amount written the way the field reads it back |
+| `apps/student/src/history-sections.test.ts` | the till's row phrase: payer, status, amount, time, price group, refunds, payment ID                                                                                                                                                                                                                                                       |
+
+### Checks (2026-11-05, fresh runs)
+
+| Check                                        | Result  | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| -------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm check`                                 | passed  | 273 at `90dcfa9` (rerun at the start); 277 after the checkout commit; 282 after the refund commit, the keyboard fix and the polish commit (the order commit added no test); 39 identical native files; single instances; the dashboard builds                                                                                                                                                                                                                                                                     |
+| `pnpm bundle:native`                         | passed  | Hermes bundles: student 3.77 MB, till 3.80 MB; no preview screen, sample data (`ord_3f9c2a71b8d04e65`, `mns_preview`) or "Till screen states" in any of the four bundles (a shipped string such as "Send again safely" is found, so the search sees strings)                                                                                                                                                                                                                                                      |
+| `expo install --check`                       | passed  | `expo-keep-awake ~15.0.8` is the SDK 54 version                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Till release APK (build 5)                   | built   | `mensa-till-1.0.0-5-armeabi-v7a+arm64-v8a-7613cd8.apk`, 39,396,870 bytes (build 4: 39,371,658). Same package `dev.omerarslan.mensa.till`, same signing certificate (SHA-256 `fac61745…`), the same permissions (INTERNET, VIBRATE and the dynamic-receiver permission), the same URL schemes (`https`, `mensa-till`); no `expo-dev-client` class, no `exp+` scheme; keep-awake already in build 4's dex. Build 4 is kept. SHA-256 of the file: `a219b94f62e8d59e29dba82941b191533147984bb91dcc9ac3b91329aab5fa0b` |
+| Upgrade 4 → 5                                | passed  | Emulator: build 4 installed, started and signed in; build 5 (first built from `ad8173e`) installed over it (`install -r`), started, signed in; checkout and the live payments list; then the final build 5 (`7613cd8`, which only adds the Diagnostics title and a comment) over that, signed in; Diagnostics shows no development entries                                                                                                                                                                        |
+| `pnpm dashboard:browser-check` (local build) | passed  | 36/36 against `vite preview` of the fresh build (the shared messages changed; the dashboard did not)                                                                                                                                                                                                                                                                                                                                                                                                              |
+| Android emulator (headless), Expo Go         | done    | Tablet (1600×2560, 320 dpi) portrait and landscape, and phone (1080×2400): live checkout, payments and a payment detail (read only); sample data for every checkout, order and refund state. English and German                                                                                                                                                                                                                                                                                                   |
+| Larger text                                  | done    | 200 % (Android's largest) on the tablet in German: checkout (live), order, paid, refund form, confirmation and unknown outcome; 130 % on the phone: checkout with the bottom bar, payments (live), order, paid, refund form and confirmation. Found and fixed: the keyboard covering the refund amount on a phone                                                                                                                                                                                                 |
+| Keyboard                                     | done    | Phone, 130 %: the refund amount, reason and "Check refund" reachable with the keyboard open, no gap after it closes; the till's typed sign-in fits above the keyboard                                                                                                                                                                                                                                                                                                                                             |
+| Screen-reader labels (Android tree)          | checked | Payments rows: "Test Student, Confirmed, €10.00, 13:53 · Student price · pay_10e932549a4a402f"; menu rows one phrase with the three prices; "Add one Vegetarian dish of the day" / "Remove one …"                                                                                                                                                                                                                                                                                                                 |
+| A real order, payment or refund              | not run | Each is a write; the active order and refund states were checked with sample data in their real views, the containers' logic is unchanged and covered by tests                                                                                                                                                                                                                                                                                                                                                    |
+| Keep-awake at runtime                        | not run | Needs a shown order (a write); K4–K8 on the iPad. Decided by `keepAwakeWanted` (tested) and released in the effect's cleanup                                                                                                                                                                                                                                                                                                                                                                                      |
+| iPad simulator, iPad, VoiceOver, TalkBack    | not run | K1–K14 and E1–E10 for the owner; A3 and A4 (VoiceOver) in the final accessibility QA                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| Reduced motion at runtime                    | not run | By code: the till adds no animation; the skeleton pulse stops under reduced motion (`useReducedMotion`)                                                                                                                                                                                                                                                                                                                                                                                                           |
+
+Screenshots (git-ignored, `.local/phase5-screenshots/`): `before-*` (checkout empty and with items in
+portrait and landscape, payments, detail and refund on the tablet; no active order: it needs a real
+order), `after-en-*` and `after-de-*` (live and sample-data states, tablet portrait and landscape,
+phone; `-font200-` and `-font130-` for larger text) and `release-*` (build 5).
+
+### Performance notes
+
+- Checkout: menu rows are memoised and the add/remove callbacks stable, so a tap re-renders one row
+  and the order panel; the menu is a `FlatList`.
+- Active order: the countdown is its own component on the server clock and the only part that
+  re-renders every second; the QR code is memoised on its payload and measured size, so status
+  changes never redraw it and a rotation only when the size changes.
+- Payments: a `SectionList` with memoised rows; sections recomputed only when the list or a cached
+  payment changes; "today" read once.
+
+### Remaining
+
+- K1–K14 on the iPad and E1–E10 with the Pixel XL (the owner); keep-awake on a real order (K4–K8).
+- VoiceOver on the iPad (A3, A4) and TalkBack (P13) in the final accessibility QA.
+- The student app's next build picks up the keyboard padding (`8af18c8`).
+
 ## Manual steps
 
 1. **pnpm on PATH**: `corepack enable pnpm` (undo: `corepack disable pnpm`), or prefix commands with
@@ -990,7 +1081,10 @@ Not part of this run: P8 (the history offline) and P12 (removed animations).
    a fingerprint, then follow [manual-tests.md](manual-tests.md).
 4. **iPad (till)**: development build once with
    `pnpm --filter @mensa/till exec expo run:ios --device --port 8082`, then `pnpm till` (Metro 8082)
-   and open Mensa Till. Alternative: the App Store's Expo Go (it supports SDK 54): `pnpm till`, press
+   and open Mensa Till. Phase 5 needs no new build (the installed one already links keep-awake),
+   only a Metro restart with a cleared cache:
+   `pnpm --filter @mensa/till exec expo start --port 8082 --clear`. Android till:
+   `adb install -r artifacts/android/mensa-till-1.0.0-5-armeabi-v7a+arm64-v8a-7613cd8.apk` (build 5). Alternative: the App Store's Expo Go (it supports SDK 54): `pnpm till`, press
    `s`, scan the terminal's QR with the iPad camera.
 5. **iPhone 17 Pro (student with Face ID)**: Expo Go cannot use Face ID, so this needs a development
    build. Xcode → Settings → Accounts → add your Apple ID (a free personal team works; profiles last
@@ -1009,8 +1103,9 @@ Not part of this run: P8 (the history offline) and P12 (removed animations).
 ## Remaining for stage 5: submission
 
 1. The UI polish phases agreed on 2026-11-04: the design system (Phase 2), sign-in with the device
-   language (Phase 3) and the student screens (Phase 4, awaiting the owner's review and P1–P13) are
-   done; the till screens and the final release phase follow.
+   language (Phase 3), the student screens (Phase 4; 7 of 8 device checks passed, TalkBack not run)
+   and the till screens (Phase 5, awaiting K1–K14 and E1–E10 on the iPad) are done; the final QA
+   and release phase follows.
 2. Device checks not run yet: TalkBack, VoiceOver, maximum font sizes, N6 with a genuinely
    unresolved payment, and the other rows listed under "Not run on a device"; the dashboard's D1–D4.
 3. Final read-through of the README and [design.md](design.md); invite the reviewers; rehearse the

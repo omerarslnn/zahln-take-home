@@ -392,7 +392,19 @@ SignIn ─▶ Checkout: menu + basket ─▶ order intent ─▶ QR (open) ─�
   (pending refunds already reserved), re-read by the controller right before sending; amounts are
   parsed by `parseEuroAmount` (integer cents, German or English decimals, no thousands separators);
   an explicit confirmation precedes one refund intent; an unresolved refund (pending, or without an
-  answer) blocks another one on the same payment.
+  answer) blocks another one on the same payment. The confirmation holds only while the server's
+  newest `refundableAmountCents` still covers the reviewed amount, and a synchronous ref answers a
+  second tap before React re-renders the busy button (the controller refuses a second refund action
+  for the payment as well).
+- **Screens (Phase 5).** Checkout, the active order, payments and the detail's refund panel are
+  containers (the rules above, unchanged) and pure views (`CheckoutView`, `ActiveOrderView`,
+  `PaymentsView`, `TillPaymentDetailView`, `RefundPanelView`), rendered from sample data by the
+  development-only "Till screen states". The countdown is its own component on the server clock
+  (`order-countdown.ts`, shared with the student's review), so only it re-renders every second.
+- **Keep-awake.** `components/ActiveOrder.tsx` activates `expo-keep-awake` under one tag while
+  `keepAwakeWanted` holds (screen focused, app in the foreground, order `open` or `paying`) and
+  deactivates it in the effect's cleanup, so paid, expired, unresolved, "Next customer", leaving the
+  screen and the background all release it.
 
 ### One copy of NativeWind
 
@@ -403,7 +415,9 @@ folder while app code used the other, and class names on remapped components sil
 the student app. The till therefore draws its QR without SVG, and `pnpm check` runs
 `scripts/check-single-instances.mjs`, which fails if react, react-native, react-native-css-interop or
 nativewind exists twice. Separately, NativeWind did not apply classes to `KeyboardAvoidingView` even
-with one copy, so the screen wrapper (`components/ui/Screen.tsx`) gives it a plain style.
+with one copy, so the screen wrapper (`components/ui/Screen.tsx`) gives it a plain style. It pads
+for the keyboard on both platforms: SDK 54 apps are edge to edge on Android, where the window no
+longer shrinks for the keyboard, so without padding a field near the bottom stayed under it.
 
 ## The finance dashboard (stage 4)
 

@@ -35,8 +35,9 @@ warning; student build 4) are done; N9 passed on the Pixel XL. Phase 2 (design s
 native primitives, `docs/design-system.md`) is approved. Phase 3 (typed and demo sign-in, roles
 checked before a session is published, the apps following the device language; student build 5,
 till build 4) passed eight smoke checks on the Pixel XL. Phase 4 (the student screens redesigned,
-student build 6) is done and awaits the owner's review and Pixel XL pass (P1–P13); the till redesign
-and the final release phase come later and are not started.
+student build 6) passed 7 of 8 Pixel XL checks (TalkBack deferred, not run). Phase 5 (the till
+screens redesigned, `expo-keep-awake`, till build 5) is done and awaits the owner's iPad pass
+(K1–K14, E1–E10 in `docs/manual-tests.md`); the final QA and release phase is not started.
 
 Live writes go only through intents (the apps, `pnpm api:order-probe`, `pnpm api:payment-probe`) and
 only when the current stage authorizes them; record each one in the ledger in `docs/api-notes.md`.
@@ -122,7 +123,7 @@ dashboard; 12 is implemented as a device gate.
 - App version: `expo.version` in `apps/*/app.json` (1.0.0, the server's `minAppVersion`), read at
   runtime as `appVersion` in `apps/*/src/api.ts` and sent as `X-App-Version`. Bump it there; generated
   native projects pick it up on the next `expo prebuild --clean`. Raise `android.versionCode` and
-  `ios.buildNumber` (now student 6, till 4) for each build handed to a device.
+  `ios.buildNumber` (now student 6, till 5) for each build handed to a device.
 - Payment availability: `GateRecovery` (`@mensa/domain`) decides when `GET /config` is read again
   (start-up, foreground, connection back, a few spaced retries after a failed read, the user's
   "check again"); only the server's answer opens the gate, and only its newest read counts. The
@@ -156,9 +157,14 @@ dashboard; 12 is implemented as a device gate.
 - Language: the native apps follow the device language (`src/language.tsx`, German otherwise
   English). No language switch on normal screens; Diagnostics has a session-only override, never
   persisted. Every new string needs English and German. The dashboard keeps its own switch.
-- Student screens are a container (hooks, guards, navigation) and a pure `…View` (props only); keep
-  payment rules out of views. The development-only "Payment screen states" (Diagnostics, `__DEV__`)
-  renders the views from sample data; add a state there when a view gains one.
+- Student and till screens are a container (hooks, guards, navigation) and a pure `…View` (props
+  only); keep payment rules out of views. The development-only "Payment screen states" (student) and
+  "Till screen states" (Diagnostics, `__DEV__`) render the views from sample data; add a state there
+  when a view gains one.
+- The till keeps the screen awake (`expo-keep-awake`) only while `keepAwakeWanted` holds: a shown,
+  focused order that is `open` or `paying`, app in the foreground. Anything ticking every second
+  (the countdown) lives in its own small component, never in a screen that renders the menu or the
+  QR code.
 - Screen-reader announcements go through `useAnnouncement` only (both platforms, focused screen
   only, once per change); never also an Android live region for the same message.
 - The dashboard keeps nothing in localStorage or cookies, and uses hash routes (`#/…`).
