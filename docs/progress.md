@@ -1060,6 +1060,25 @@ phone; `-font200-` and `-font130-` for larger text) and `release-*` (build 5).
 - Payments: a `SectionList` with memoised rows; sections recomputed only when the list or a cached
   payment changes; "today" read once.
 
+### Physical-device results (iPad A16 development build and Pixel XL student build 6, 2026-11-05)
+
+Run by the owner: all 8 selected acceptance checks passed. They are aggregate checks drawn from
+K1–K14 and E1–E10; the individual K and E steps are not recorded one by one, so none of them is
+marked as passed on its own. VoiceOver and TalkBack were **not run** (deferred to the final
+physical-device QA).
+
+| #   | Check                                                                          | Drawn from       | Result  |
+| --- | ------------------------------------------------------------------------------ | ---------------- | ------- |
+| 1   | Checkout, basket and quantity controls                                         | K1, K2           | passed  |
+| 2   | iPad portrait and landscape rotation, basket kept                              | K3, K5           | passed  |
+| 3   | QR presentation and the display kept awake                                     | K4               | passed  |
+| 4   | A real QR scan and a fingerprint-authorized payment, confirmed on both devices | K8, E2, E3, E5   | passed  |
+| 5   | A cancelled biometric authorization creates no payment                         | E4               | passed  |
+| 6   | Partial and full refunds, reflected in the student app                         | K11, K12, E7, E8 | passed  |
+| 7   | Order expiry and the "Next customer" behaviour                                 | K7, E9           | passed  |
+| 8   | German, larger text and the keyboard on the tested screens                     | K13, K14         | passed  |
+| —   | VoiceOver on the iPad, TalkBack on the Pixel XL                                | A3, A4, P13      | not run |
+
 ### Remaining
 
 - K1–K14 on the iPad and E1–E10 with the Pixel XL (the owner); keep-awake on a real order (K4–K8).
