@@ -1166,6 +1166,8 @@ documents were being edited; same code as `b8c3835`).
 both APKs and `SHA256SUMS.txt`; downloaded again with `gh release download` and checked. A draft is
 visible only to collaborators with write access and creates no tag; it needs the owner's approval
 to publish, and reviewers need to be invited to the repository to download it.
+The owner published the release on 2026-11-05 at 19:27 Berlin time (tag `v1.0.0-final` at
+`4fe08aa`); its three assets are unchanged (same names and sizes).
 
 **Dashboard**: https://zahln-mensa-dashboard-4ft.pages.dev/ serves the build of `4fe08aa`
 (`index.html`, JavaScript and CSS byte-identical to the local build).

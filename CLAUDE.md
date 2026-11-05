@@ -38,11 +38,10 @@ till build 4) passed eight smoke checks on the Pixel XL. Phase 4 (the student sc
 student build 6) passed 7 of 8 Pixel XL checks (TalkBack deferred, not run). Phase 5 (the till
 screens redesigned, `expo-keep-awake`, till build 5) passed eight aggregate checks on the iPad and
 the Pixel XL. Phase 6 (final QA and release preparation: student build 7, till build 6, the
-dashboard redeployed from `4fe08aa`, the APKs in the draft release `v1.0.0-final`) is done; the
+dashboard redeployed from `4fe08aa`, the APKs in the release `v1.0.0-final`, published by the owner on 2026-11-05) is done; the
 owner reports the screen-reader checks SR1–SR3 (TalkBack, VoiceOver) passed. Phase 7 redesigned
 the finance dashboard (Export CSV beside the Payments heading; a long export is saved with "Save CSV
-file") and redeployed it from `6ff2308` to the same URL; it awaits the owner's review. Do not publish
-the release, invite reviewers or submit without the owner's approval.
+file") and redeployed it from `6ff2308` to the same URL; it awaits the owner's review. Do not change the release assets, invite reviewers or submit without the owner's approval.
 
 Live writes go only through intents (the apps, `pnpm api:order-probe`, `pnpm api:payment-probe`) and
 only when the current stage authorizes them; record each one in the ledger in `docs/api-notes.md`.

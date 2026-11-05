@@ -31,7 +31,7 @@ result**: every write is a saved intent with one idempotency key, a timeout is "
 | Walkthrough for the call | [docs/review-guide.md](docs/review-guide.md)                                                                                                                                    |
 
 The APKs are attached to the release **"Mensa Lunch Rush 1.0.0"** of this repository (tag
-`v1.0.0-final`, under _Releases_; a draft until the owner publishes it) with a `SHA256SUMS.txt`; they are also built locally into
+`v1.0.0-final`, under _Releases_; published 2026-11-05) with a `SHA256SUMS.txt`; they are also built locally into
 `artifacts/android/` (git-ignored). Both are **release builds signed with the project's debug key**:
 installable, and updatable over the earlier builds of this repository, but **not Play Store
 builds** (see [docs/design.md](docs/design.md), section 7).
