@@ -70,7 +70,10 @@ function ResultDetails({ result }: { result: TransportResult<AppConfig> }) {
   switch (result.kind) {
     case 'success':
       lines.push(
-        t('connection.success', { status: result.meta.status, duration: result.meta.durationMs }),
+        t('connection.success', {
+          status: result.meta.status,
+          duration: Math.round(result.meta.durationMs),
+        }),
         t('connection.paymentsEnabled', {
           value: t(result.data.paymentsEnabled ? 'common.yes' : 'common.no'),
         }),

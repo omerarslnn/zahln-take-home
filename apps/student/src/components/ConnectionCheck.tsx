@@ -70,7 +70,10 @@ function describe(
   switch (result.kind) {
     case 'success':
       return [
-        t('connection.success', { status: result.meta.status, duration: result.meta.durationMs }),
+        t('connection.success', {
+          status: result.meta.status,
+          duration: Math.round(result.meta.durationMs),
+        }),
         t('connection.paymentsEnabled', { value: yesNo(result.data.paymentsEnabled) }),
         t('connection.minAppVersion', { value: result.data.minAppVersion }),
         serverTime(result.meta.serverDate, t, locale),
