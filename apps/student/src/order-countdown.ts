@@ -1,5 +1,6 @@
-// The review's countdown, as pure functions. The seconds come from the order's `expiresAt` and the
-// server clock (never the device clock); this only formats them.
+// An order's countdown, as pure functions (the student's review, the till's QR). The till has an
+// identical copy. The seconds come from the order's `expiresAt` and the server clock (never the
+// device clock); this only formats them.
 
 /** Under this many seconds left the countdown is shown as a warning. */
 export const COUNTDOWN_WARNING_S = 60;

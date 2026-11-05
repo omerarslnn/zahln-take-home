@@ -14,7 +14,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useRef, useState, type ReactNode } from 'react';
 import { FlatList, ScrollView, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CheckoutPanel } from '../components/ActiveOrder';
+import { ActiveOrder } from '../components/ActiveOrder';
 import { BasketPanel } from '../components/BasketPanel';
 import { MenuItemRow } from '../components/MenuItemRow';
 import {
@@ -101,14 +101,7 @@ export function CheckoutScreen({ navigation }: Props) {
       basket={basket}
       creating={creating}
       message={message}
-      activeOrder={
-        checkout ? (
-          <CheckoutPanel
-            record={checkout}
-            qrSize={Math.min(width >= 768 ? 380 : width - 64, 420)}
-          />
-        ) : null
-      }
+      activeOrder={checkout ? <ActiveOrder record={checkout} wide={width >= 768} /> : null}
       onAdd={add}
       onRemove={remove}
       onCreate={() => void createOrder()}

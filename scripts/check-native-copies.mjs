@@ -23,6 +23,7 @@ const SHARED = [
   { path: 'src/language.tsx' },
   { path: 'src/components/payment-text.ts' },
   { path: 'src/components/sign-in-text.ts' },
+  { path: 'src/order-countdown.ts' },
   { path: 'src/components/SignIn.tsx' },
   { path: 'src/components/SecureStorageCheck.tsx' },
   { path: 'src/components/ConnectionCheck.tsx' },
