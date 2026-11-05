@@ -1170,12 +1170,18 @@ to publish, and reviewers need to be invited to the repository to download it.
 **Dashboard**: https://zahln-mensa-dashboard-4ft.pages.dev/ serves the build of `4fe08aa`
 (`index.html`, JavaScript and CSS byte-identical to the local build).
 
+### Physical screen-reader results (reported by the owner after Phase 6)
+
+The owner ran the physical screen-reader checks and reports them passed: TalkBack on the Pixel XL
+(SR1) and VoiceOver on the iPhone 17 Pro and the iPad A16 (SR2, SR3). They are recorded as one
+aggregate result; the individual steps of SR1–SR3 are not itemized here. This clears the release
+blocker for the screen-reader pay flow.
+
 ### Remaining
 
-- **Blocker for the screen-reader requirement**: SR1 (TalkBack, Pixel XL), SR2 (VoiceOver,
-  iPhone), SR3 (VoiceOver, iPad).
-- The final physical matrix F1–F20 ([manual-tests.md](manual-tests.md)), including the iOS device
-  rebuilds.
+- ~~Blocker for the screen-reader requirement~~: passed on the devices (above).
+- The final physical matrix F1–F20 ([manual-tests.md](manual-tests.md)) beyond the checks the owner
+  has reported.
 - The owner's approval to publish the release and invite the reviewers.
 
 ## Manual steps
